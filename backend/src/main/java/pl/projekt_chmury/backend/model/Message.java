@@ -1,20 +1,49 @@
 package pl.projekt_chmury.backend.model;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
-import jakarta.persistence.Id;
-import lombok.Getter;
-import lombok.Setter;
+import jakarta.persistence.*;
 
 @Entity
-@Getter
-@Setter
 public class Message {
+
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue
     private Long id;
 
+    @ManyToOne
+    @JoinColumn(name = "user_id")
+    private User author;   // Pole typu User, a nie String
+
     private String content;
-    private String author;
+
+    // Konstruktor bezargumentowy dla JPA
+    public Message() {}
+
+    // Konstruktor przyjmujący obiekt User i content
+    public Message(User author, String content) {
+        this.author = author;
+        this.content = content;
+    }
+
+    // gettery/settery
+
+    public Long getId() {
+        return id;
+    }
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public User getAuthor() {
+        return author;
+    }
+    public void setAuthor(User author) {
+        this.author = author;
+    }
+
+    public String getContent() {
+        return content;
+    }
+    public void setContent(String content) {
+        this.content = content;
+    }
 }

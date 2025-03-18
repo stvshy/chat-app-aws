@@ -1,11 +1,19 @@
-# Używamy obrazu OpenJDK 17 – idealnego do uruchamiania aplikacji Spring Boot
-FROM openjdk:17
+# Używamy obrazu Maven z JDK 17
+FROM maven:3.9.9-eclipse-temurin-17
 
-# Ustawiamy katalog roboczy wewnątrz kontenera
+
+# Ustawiamy katalog roboczy w kontenerze
 WORKDIR /app
 
-# Kopiujemy gotowy plik JAR (upewnij się, że plik został zbudowany w folderze target)
-COPY target/backend-0.0.1-SNAPSHOT.jar app.jar
+# Skopiuj plik pom.xml oraz katalog .mvn (jeśli istnieje) – to pozwoli pobrać zależności
+COPY pom.xml ./
+COPY .mvn .mvn
+COPY mvnw ./
+# Pobieramy zależności – dzięki temu przy kolejnych buildach warstwa ta będzie cachowana
+RUN mvn dependency:go-offline -B
 
-# Uruchamiamy aplikację Spring Boot
-ENTRYPOINT ["java", "-jar", "app.jar"]
+# Skopiuj cały kod (bind mount w docker-compose nadpisze te pliki, ale przy buildzie potrzebne są przykładowe pliki)
+COPY src src
+
+# Uruchamiamy aplikację w trybie developerskim
+CMD ["./mvnw", "spring-boot:run"]
