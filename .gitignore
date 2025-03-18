@@ -1,0 +1,44 @@
+# Ignoruj pliki IDE
+.idea/
+*.iml
+
+# Ignoruj folder target (backend - build, jar)
+backend/target/
+backend/app.jar
+
+# Ignoruj Maven Wrapper – te pliki możesz wersjonować, ale nie generowane zależności
+# Jeśli jednak nie chcesz, możesz ignorować cały folder .mvn
+# backend/.mvn/
+
+# Ignoruj pliki specyficzne dla systemu
+.DS_Store
+Thumbs.db
+
+# Ignoruj pliki git
+backend/.gitignore
+backend/.gitattributes
+frontend/.gitignore
+
+# Ignoruj folder node_modules (frontend)
+frontend/node_modules/
+
+# Ignoruj folder build (frontend - np. dist)
+frontend/dist/
+
+# Ignoruj pliki lock dla npm
+frontend/package-lock.json
+
+# Ignoruj pliki konfiguracji środowiskowych (opcjonalnie – jeśli nie chcesz ich wersjonować)
+# .env
+# frontend/.env
+
+# Ignoruj pliki generowane przez Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# Ignoruj pliki tymczasowe, które tworzy system (np. pliki tymczasowe Office)
+~$*.docx
+
+# Jeśli masz dodatkowe pliki dokumentacyjne, które nie chcesz wersjonować, dodaj je tutaj
