@@ -1,54 +1,22 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import Login from "./components/Login";
+import Register from "./components/Register";
+import Chat from "./components/Chat";
+// @ts-ignore
+import "./styles.css";
 
-function App() {
-    const [messages, setMessages] = useState([]);
-    const [content, setContent] = useState("");
-    const [author, setAuthor] = useState("");
+export default function App() {
+    const [token, setToken] = useState("");
+    const [username, setUsername] = useState("");
 
-    useEffect(() => {
-        fetch("http://localhost:8081/api/messages")
-            .then((res) => res.json())
-            .then((data) => setMessages(data));
-    }, []);
+    if(!token) {
+        return (
+            <div className="container">
+                <Register/>
+                <Login onLogin={(t,u)=>{setToken(t); setUsername(u)}}/>
+            </div>
+        );
+    }
 
-    const handleSend = async () => {
-        const newMsg = { content, author };
-        await fetch("http://localhost:8081/api/messages", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(newMsg),
-        });
-        // Odswież listę
-        const res = await fetch("http://localhost:8081/api/messages");
-        const data = await res.json();
-        setMessages(data);
-    };
-
-    return (
-        <div>
-            <h1>Chat</h1>
-            <ul>
-                {messages.map((m: any) => (
-                    <li key={m.id}>
-                        {m.author}: {m.content}
-                    </li>
-                ))}
-            </ul>
-            <input
-                type="text"
-                placeholder="author"
-                value={author}
-                onChange={(e) => setAuthor(e.target.value)}
-            />
-            <input
-                type="text"
-                placeholder="content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-            />
-            <button onClick={handleSend}>Send</button>
-        </div>
-    );
+    return <Chat token={token} username={username}/>;
 }
-
-export default App;

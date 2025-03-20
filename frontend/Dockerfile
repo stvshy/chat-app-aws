@@ -1,20 +1,17 @@
-# Używamy lekkiego obrazu Node (np. wersja 20 na Alpine)
 FROM node:20-alpine
 
-# Ustawiamy katalog roboczy
 WORKDIR /app
 
-# Kopiujemy pliki package.json i package-lock.json – dzięki temu warstwa zależności będzie cachowana
-COPY package*.json ./
+# kopiujemy TYLKO package.json, BEZ package-lock.json
+COPY package.json ./
 
-# Instalujemy zależności
+# instalujemy zależności
 RUN npm install
 
-# Kopiujemy cały kod źródłowy do kontenera
+# kopiujemy resztę plików (kod i ewentualny package-lock, jeśli jednak chcesz)
 COPY . .
 
-# Ustawiamy zmienną środowiskową dla portu (opcjonalnie)
 ENV PORT=5173
+EXPOSE 5173
 
-# Uruchamiamy serwer developerski Vite, który oferuje hot reload
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
