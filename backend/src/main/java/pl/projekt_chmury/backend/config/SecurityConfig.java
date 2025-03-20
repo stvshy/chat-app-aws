@@ -63,6 +63,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/files/download/**").permitAll()  // <-- dodaj to
                         .anyRequest().authenticated()
                 )
                 // <-- Dodaj JWT Filter PRZED UsernamePasswordAuthenticationFilter

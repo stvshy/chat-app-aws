@@ -13,6 +13,8 @@ interface IMessage {
         password: string;
     } | null;
     content: string;
+    // Dodajemy pole file (może być null lub undefined)
+    file?: string | null;
 }
 
 // Definiujemy propsy, które przychodzą z rodzica (App)
@@ -81,6 +83,7 @@ export default function Chat({ token, username }: ChatProps) {
         fetchReceivedMessages();
     }, []);
 
+    // Funkcja do wysyłania nowej wiadomości
     const sendMessage = async () => {
         try {
             if (file) {
@@ -104,7 +107,7 @@ export default function Chat({ token, username }: ChatProps) {
                     // Odśwież widoki wiadomości
                     fetchSentMessages();
                     fetchReceivedMessages();
-                    // Wyczyszczenie pól
+                    // Wyczyść pola
                     setRecipient("");
                     setContent("");
                     setFile(null);
@@ -145,7 +148,6 @@ export default function Chat({ token, username }: ChatProps) {
         }
     };
 
-
     return (
         <div className="chat-container">
             <h2>Witaj, {username}!</h2>
@@ -168,7 +170,6 @@ export default function Chat({ token, username }: ChatProps) {
                         type="file"
                         onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
                     />
-
                     <button onClick={sendMessage}>Wyślij</button>
                 </div>
 
@@ -181,6 +182,20 @@ export default function Chat({ token, username }: ChatProps) {
                             <li key={msg.id}>
                                 <strong>Od:</strong> {msg.author.username} <br />
                                 <strong>Treść:</strong> {msg.content}
+                                {/* Link do pobrania pliku (jeśli istnieje) */}
+                                {msg.file && (
+                                    <>
+                                        <br />
+                                        <strong>Załącznik:</strong>{" "}
+                                        <a
+                                            href={`http://localhost:8081/api/files/download/${msg.id}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            Pobierz plik
+                                        </a>
+                                    </>
+                                )}
                             </li>
                         ))}
                     </ul>
@@ -196,6 +211,20 @@ export default function Chat({ token, username }: ChatProps) {
                                 <strong>Do:</strong>{" "}
                                 {msg.recipient ? msg.recipient.username : "Broadcast"} <br />
                                 <strong>Treść:</strong> {msg.content}
+                                {/* Link do pobrania pliku (jeśli istnieje) */}
+                                {msg.file && (
+                                    <>
+                                        <br />
+                                        <strong>Załącznik:</strong>{" "}
+                                        <a
+                                            href={`http://localhost:8081/api/files/download/${msg.id}`}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                        >
+                                            Pobierz plik
+                                        </a>
+                                    </>
+                                )}
                             </li>
                         ))}
                     </ul>
