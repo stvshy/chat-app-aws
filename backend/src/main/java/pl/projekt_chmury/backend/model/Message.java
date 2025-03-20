@@ -23,6 +23,8 @@ public class Message {
 
     public Message() {}
 
+    private String file;
+
     public Message(User author, String content) {
         this.author = author;
         this.content = content;
@@ -54,5 +56,13 @@ public class Message {
     }
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public String getFile() {
+        return file;
+    }
+
+    public void setFile(String file) {
+        this.file = file;
     }
 }

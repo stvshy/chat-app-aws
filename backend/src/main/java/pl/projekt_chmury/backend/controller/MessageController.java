@@ -76,4 +76,45 @@ public class MessageController {
         file.transferTo(destination);
         return "Plik zapisany: " + destination.getAbsolutePath();
     }
+
+    @PostMapping(value = "/with-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public Message addMessageWithFile(
+            @RequestParam("author") String author,
+            @RequestParam("content") String content,
+            @RequestParam(value = "recipient", required = false) String recipient,
+            @RequestParam("file") MultipartFile file) throws IOException {
+
+        // Pobierz nadawcę
+        User authorUser = userRepository.findByUsername(author)
+                .orElseThrow(() -> new RuntimeException("Sender not found"));
+
+        // Pobierz odbiorcę, jeśli został podany
+        User recipientUser = null;
+        if (recipient != null && !recipient.isEmpty()) {
+            recipientUser = userRepository.findByUsername(recipient)
+                    .orElseThrow(() -> new RuntimeException("Recipient not found"));
+        }
+
+        // Używamy absolutnej ścieżki do katalogu uploads (np. "/uploads")
+        String uploadDir = "/uploads";
+        File uploadsDir = new File(uploadDir);
+        if (!uploadsDir.exists()) {
+            // Używamy mkdirs() – tworzy wszystkie brakujące katalogi
+            uploadsDir.mkdirs();
+        }
+
+        // Używamy oryginalnej nazwy pliku – w produkcji warto generować unikalną nazwę
+        String originalFilename = file.getOriginalFilename();
+        File destination = new File(uploadsDir, originalFilename);
+        file.transferTo(destination);
+
+        // Tworzymy nową wiadomość i ustawiamy ścieżkę do pliku
+        Message msg = new Message(authorUser, content);
+        msg.setRecipient(recipientUser);
+        msg.setFile(destination.getAbsolutePath());
+
+        return messageRepository.save(msg);
+    }
+
+
 }

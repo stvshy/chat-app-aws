@@ -48,16 +48,17 @@ resource "aws_elastic_beanstalk_environment" "backend_env" {
     value     = aws_db_instance.mydb.password
   }
   setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "S3_BUCKET_NAME"
-    value     = aws_s3_bucket.upload_bucket.bucket
-  }
+  #   namespace = "aws:elasticbeanstalk:application:environment"
+  #   name      = "S3_BUCKET_NAME"
+  #   value     = aws_s3_bucket.upload_bucket.bucket
+  # }
 }
 
 #########################################
 # Elastic Beanstalk — Frontend Application
 #########################################
 
+}
 resource "aws_elastic_beanstalk_application" "frontend_app" {
   name        = "frontend-app"
   description = "Frontend for Projekt Chmury"
@@ -75,13 +76,13 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
   }
 }
 
-######################
-# S3 — File uploads  #
-######################
-
-resource "aws_s3_bucket" "upload_bucket" {
-  bucket = "projekt-chmury-uploads"
-}
+# ######################
+# # S3 — File uploads  #
+# ######################
+#
+# resource "aws_s3_bucket" "upload_bucket" {
+#   bucket = "projekt-chmury-uploads"
+# }
 
 ###########################
 # CloudWatch — Log Group  #
@@ -95,6 +96,7 @@ resource "aws_cloudwatch_log_group" "app_logs" {
 ###########################
 # Cognito — User Pool and Client
 ###########################
+
 
 resource "aws_cognito_user_pool" "chat_pool" {
   name = "projekt-chmury-user-pool"

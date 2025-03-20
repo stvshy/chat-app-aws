@@ -29,6 +29,7 @@ export default function Chat({ token, username }: ChatProps) {
     // Stany do wysyłania nowej wiadomości
     const [recipient, setRecipient] = useState("");
     const [content, setContent] = useState("");
+    const [file, setFile] = useState<File | null>(null);
 
     // Funkcja do pobrania wysłanych wiadomości
     const fetchSentMessages = async () => {
@@ -80,41 +81,70 @@ export default function Chat({ token, username }: ChatProps) {
         fetchReceivedMessages();
     }, []);
 
-    // Funkcja do wysyłania nowej wiadomości
     const sendMessage = async () => {
         try {
-            const body = {
-                author: username,
-                content: content,
-                recipient: recipient,
-            };
-            const res = await fetch("http://localhost:8081/api/messages", {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                },
-                body: JSON.stringify(body),
-            });
+            if (file) {
+                // Przygotowanie danych jako FormData
+                const formData = new FormData();
+                formData.append("author", username);
+                formData.append("content", content);
+                formData.append("recipient", recipient);
+                formData.append("file", file);
 
-            if (res.ok) {
-                alert("Wiadomość wysłana pomyślnie!");
-                // Po wysłaniu odśwież widoki
-                fetchSentMessages();
-                fetchReceivedMessages();
+                const res = await fetch("http://localhost:8081/api/messages/with-file", {
+                    method: "POST",
+                    headers: {
+                        Authorization: `Bearer ${token}`, // Nie ustawiamy Content-Type – przeglądarka ustawi boundary
+                    },
+                    body: formData,
+                });
 
-                // Wyczyść pola
-                setRecipient("");
-                setContent("");
+                if (res.ok) {
+                    alert("Wiadomość z plikiem wysłana pomyślnie!");
+                    // Odśwież widoki wiadomości
+                    fetchSentMessages();
+                    fetchReceivedMessages();
+                    // Wyczyszczenie pól
+                    setRecipient("");
+                    setContent("");
+                    setFile(null);
+                } else {
+                    const text = await res.text();
+                    alert("Błąd wysyłania wiadomości: " + text);
+                }
             } else {
-                const text = await res.text();
-                alert("Błąd wysyłania wiadomości: " + text);
+                // Jeśli nie ma pliku, wysyłamy standardową wiadomość
+                const body = {
+                    author: username,
+                    content: content,
+                    recipient: recipient,
+                };
+                const res = await fetch("http://localhost:8081/api/messages", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: JSON.stringify(body),
+                });
+
+                if (res.ok) {
+                    alert("Wiadomość wysłana pomyślnie!");
+                    fetchSentMessages();
+                    fetchReceivedMessages();
+                    setRecipient("");
+                    setContent("");
+                } else {
+                    const text = await res.text();
+                    alert("Błąd wysyłania wiadomości: " + text);
+                }
             }
         } catch (error) {
             console.error("Błąd wysyłania wiadomości:", error);
             alert("Błąd wysyłania wiadomości!");
         }
     };
+
 
     return (
         <div className="chat-container">
@@ -134,6 +164,11 @@ export default function Chat({ token, username }: ChatProps) {
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                     />
+                    <input
+                        type="file"
+                        onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
+                    />
+
                     <button onClick={sendMessage}>Wyślij</button>
                 </div>
 
