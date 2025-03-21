@@ -1,0 +1,67 @@
+/* auth.css */
+
+/* Tło i kontener dla widoku logowania/rejestracji */
+body.auth-body {
+    font-family: sans-serif;
+    background: #282c34;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+    margin: 0;
+}
+
+.container {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.auth-container {
+    flex-direction: column;
+    align-items: center;
+}
+
+/* Karty logowania i rejestracji */
+.card {
+    background: #3a3f47;
+    padding: 27px;
+    border-radius: 8px;
+    width: 300px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+input {
+    width: 86%;
+    padding: 11px;
+    margin-bottom: 0.5rem;
+    border: 1px solid #555;
+    background-color: #b1b3ba;
+    border-radius: 20px;
+    color: #242424;
+    padding-left: 15px;
+}
+
+/* Przycisk w kartach */
+button {
+    margin-top: 10px;
+    border-radius: 20px;
+    border: 1px solid transparent;
+    padding: 9px;
+    font-weight: 500;
+    font-family: inherit;
+    background: #44c4e7;
+    color: #f4fcff;
+    cursor: pointer;
+    transition: border-color 0.25s;
+    width: 45%;
+    font-size: 14px;
+}
+
+button:hover {
+    border-color: #5bcaff;
+}

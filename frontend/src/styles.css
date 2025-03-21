@@ -1,7 +1,231 @@
-body { font-family:sans-serif; background:#282c34; color:#fff; display:flex; justify-content:center; padding:2rem;}
-.container { display:flex; gap:2rem;}
-.card { background:#3a3f47; padding:2rem; border-radius:8px; width:300px;}
-input, select { width:100%; padding:0.5rem; margin-bottom:0.5rem;}
-button { width:100%; padding:0.7rem; background:#61dafb; border:none; border-radius:4px; font-weight:bold; }
-.chat-list { list-style:none; padding:0; max-height:300px; overflow:auto; margin-bottom:1rem;}
-.chat-list li { margin-bottom:0.5rem;}
+/* Global */
+body {
+    font-family: sans-serif;
+    background: #282c34;
+    color: #fff;
+    display: flex;
+    justify-content: center;
+    padding: 2rem;
+    margin: 0;
+}
+
+.container {
+    display: flex;
+    gap: 2rem;
+    flex-wrap: wrap;
+}
+
+.auth-container {
+    flex-direction: column;
+    align-items: center;
+}
+.h2 {
+    margin-left: -5px;
+    font-size: 16pt;
+    font-family: system-ui;
+}
+/* Karty logowania i rejestracji */
+.card {
+    background: #3a3f47;
+    padding: 27px;
+    border-radius: 8px;
+    width: 300px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    margin-bottom: 1rem;
+    padding-top: 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+
+    .login-card,
+    .register-card {
+        width: 300px;
+    }
+
+    /* Inputy i textarea */
+
+    input, textarea {
+        /* margin-left: -6px; */
+        width: 86%;
+        padding: 11px;
+        margin-bottom: 0.5rem;
+        border: 1px solid #555;
+        padding-right: 7px;
+        margin-left: 4px;
+
+        background-color: #b1b3ba;
+        border-radius: 20px;
+        color: #242424;
+        padding-left: 15px;
+
+
+        .narrow-input {
+            width: 150px;
+        }
+
+        /* Przyciski */
+
+        button {
+            margin-top: 10px;
+            border-radius: 20px;
+            border: 1px solid transparent;
+            padding: 9px;
+            font-size: 1em;
+            font-weight: 500;
+            font-family: inherit;
+            background-color: #61dafb;
+            cursor: pointer;
+            transition: border-color 0.25s;
+            width: 45%;
+        }
+
+        .send-button {
+            background: #61dafb;
+            width: 150px; /* węższy przycisk */
+            margin-top: 0.5rem;
+        }
+
+        .send-button:hover {
+            background: #52c7e5;
+        }
+
+        /* Przyciski odświeżania */
+
+        .refresh-button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #61dafb;
+            font-size: 1.2em;
+            vertical-align: middle;
+        }
+
+        /* Chat container i sekcje */
+
+        /* Kontener główny czatu */
+
+        .chat-container {
+            width: 100%;
+            max-width: 1000px;
+            margin: 0 auto; /* Wyśrodkowanie w poziomie, jeśli chcesz */
+        }
+
+        /* Główna sekcja czatu: sekcja wysyłania + sekcje wiadomości */
+
+        .chat-main {
+            display: flex;
+            align-items: flex-start; /* Wszystkie sekcje wyrównane do góry */
+            gap: 2rem; /* Większy odstęp między sekcjami wysyłania i wiadomości */
+            flex-wrap: wrap;
+            margin-top: 1rem;
+        }
+
+        /* Sekcja wysyłania wiadomości */
+
+        .send-section {
+            background: #3a3f47;
+            padding: 1rem;
+            border-radius: 8px;
+            width: 300px; /* Zamiast flex:1 - ograniczamy do konkretnej szerokości */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 0.5rem; /* odstępy między elementami w sekcji */
+        }
+
+        /* Inputy w sekcji wysyłania wiadomości */
+
+        .send-section input,
+        .send-section textarea {
+            background: #f0f0f0; /* jaśniejsze tło */
+            color: #000; /* ciemny kolor tekstu */
+            border: 1px solid #aaa;
+            border-radius: 4px;
+            padding: 0.5rem;
+            width: 100%; /* zajmij pełną szerokość sekcji */
+            max-width: 280px; /* ale nie więcej niż 280px */
+        }
+
+        /* Przycisk "Wyślij" */
+
+        .send-section .send-button {
+            background: #61dafb;
+            color: #000;
+            width: 100px; /* węższy przycisk */
+            padding: 10rem;
+            margin-top: 0.5rem;
+            border: none;
+            border-radius: 20px; /* mocne zaokrąglenie */
+            cursor: pointer;
+            transition: background 0.25s;
+        }
+
+        .send-section .send-button:hover {
+            background: #52c7e5;
+        }
+
+        /* Sekcje wiadomości (odebrane i wysłane) */
+
+        .messages-section {
+            display: flex;
+            flex-direction: column;
+            gap: 2rem; /* odstęp między "odebrane" a "wysłane" */
+            flex: 1;
+            min-width: 300px;
+        }
+
+        /* Sekcja "Odebrane" i "Wysłane" */
+
+        .received-section,
+        .sent-section {
+            background: #3a3f47;
+            padding: 1rem;
+            border-radius: 8px;
+            height: auto;
+            flex: 1;
+        }
+
+        /* Przyciski odświeżania */
+
+        .refresh-button {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            color: #61dafb;
+            font-size: 1.2em;
+            vertical-align: middle;
+            margin-left: 1rem; /* odstęp od nagłówka */
+        }
+
+        .refresh-button:hover {
+            color: #52c7e5;
+        }
+
+        /* Lista wiadomości, scrollbar */
+
+        .message-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-top: 1rem;
+        }
+
+        /* Pojedyncza "karta" wiadomości */
+
+        .message-card {
+            background: #4a4f57;
+            padding: 0.8rem;
+            border-radius: 8px;
+            margin-bottom: 0.8rem;
+            text-align: left;
+        }
+
+        /* Nagłówek sekcji wysłanych wiadomości (rozwijalny) */
+
+        .collapsible-header {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+    }
+}

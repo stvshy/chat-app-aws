@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import "./chat.css";
+import { FiPlus } from "react-icons/fi";
 
 interface IMessage {
     id: number;
@@ -13,221 +15,217 @@ interface IMessage {
         password: string;
     } | null;
     content: string;
-    // Dodajemy pole file (może być null lub undefined)
     file?: string | null;
 }
 
-// Definiujemy propsy, które przychodzą z rodzica (App)
 interface ChatProps {
     token: string;
     username: string;
 }
 
 export default function Chat({ token, username }: ChatProps) {
-    // Stany na przechowanie list wiadomości
     const [sentMessages, setSentMessages] = useState<IMessage[]>([]);
     const [receivedMessages, setReceivedMessages] = useState<IMessage[]>([]);
 
-    // Stany do wysyłania nowej wiadomości
+    // Send form states
     const [recipient, setRecipient] = useState("");
     const [content, setContent] = useState("");
     const [file, setFile] = useState<File | null>(null);
 
-    // Funkcja do pobrania wysłanych wiadomości
+    // Controls expansion of sent messages panel
+    const [showSent, setShowSent] = useState(false);
+
     const fetchSentMessages = async () => {
         try {
-            const res = await fetch(
-                `http://localhost:8081/api/messages/sent?username=${username}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+            const res = await fetch(`http://localhost:8081/api/messages/sent?username=${username}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             if (res.ok) {
-                const data = await res.json();
+                let data = await res.json();
+                // Sort messages: newest first
+                data.sort((a: IMessage, b: IMessage) => b.id - a.id);
                 setSentMessages(data);
             } else {
-                console.error("Błąd podczas pobierania wysłanych wiadomości");
+                console.error("Error fetching sent messages");
             }
         } catch (error) {
-            console.error("Błąd: ", error);
+            console.error("Error:", error);
         }
     };
 
-    // Funkcja do pobrania odebranych wiadomości
     const fetchReceivedMessages = async () => {
         try {
-            const res = await fetch(
-                `http://localhost:8081/api/messages/received?username=${username}`,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                    },
-                }
-            );
+            const res = await fetch(`http://localhost:8081/api/messages/received?username=${username}`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
             if (res.ok) {
-                const data = await res.json();
+                let data = await res.json();
+                data.sort((a: IMessage, b: IMessage) => b.id - a.id);
                 setReceivedMessages(data);
             } else {
-                console.error("Błąd podczas pobierania odebranych wiadomości");
+                console.error("Error fetching received messages");
             }
         } catch (error) {
-            console.error("Błąd: ", error);
+            console.error("Error:", error);
         }
     };
 
-    // Wywołujemy pobranie wiadomości po załadowaniu komponentu
     useEffect(() => {
         fetchSentMessages();
         fetchReceivedMessages();
     }, []);
 
-    // Funkcja do wysyłania nowej wiadomości
     const sendMessage = async () => {
         try {
             if (file) {
-                // Przygotowanie danych jako FormData
                 const formData = new FormData();
                 formData.append("author", username);
                 formData.append("content", content);
                 formData.append("recipient", recipient);
                 formData.append("file", file);
-
                 const res = await fetch("http://localhost:8081/api/messages/with-file", {
                     method: "POST",
-                    headers: {
-                        Authorization: `Bearer ${token}`, // Nie ustawiamy Content-Type – przeglądarka ustawi boundary
-                    },
+                    headers: { Authorization: `Bearer ${token}` },
                     body: formData,
                 });
-
                 if (res.ok) {
-                    alert("Wiadomość z plikiem wysłana pomyślnie!");
-                    // Odśwież widoki wiadomości
+                    alert("Message with file sent successfully!");
                     fetchSentMessages();
                     fetchReceivedMessages();
-                    // Wyczyść pola
                     setRecipient("");
                     setContent("");
                     setFile(null);
                 } else {
                     const text = await res.text();
-                    alert("Błąd wysyłania wiadomości: " + text);
+                    alert("Error sending message: " + text);
                 }
             } else {
-                // Jeśli nie ma pliku, wysyłamy standardową wiadomość
-                const body = {
-                    author: username,
-                    content: content,
-                    recipient: recipient,
-                };
+                const body = { author: username, content, recipient };
                 const res = await fetch("http://localhost:8081/api/messages", {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Authorization: `Bearer ${token}`,
-                    },
+                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                     body: JSON.stringify(body),
                 });
-
                 if (res.ok) {
-                    alert("Wiadomość wysłana pomyślnie!");
+                    alert("Message sent successfully!");
                     fetchSentMessages();
                     fetchReceivedMessages();
                     setRecipient("");
                     setContent("");
                 } else {
                     const text = await res.text();
-                    alert("Błąd wysyłania wiadomości: " + text);
+                    alert("Error sending message: " + text);
                 }
             }
         } catch (error) {
-            console.error("Błąd wysyłania wiadomości:", error);
-            alert("Błąd wysyłania wiadomości!");
+            console.error("Error sending message:", error);
+            alert("Error sending message!");
         }
+    };
+
+    const toggleSent = () => {
+        setShowSent(!showSent);
     };
 
     return (
         <div className="chat-container">
-            <h2>Witaj, {username}!</h2>
-            <div className="chat-sections">
-                {/* Sekcja wysyłania nowej wiadomości */}
-                <div className="chat-section">
-                    <h3>Wyślij wiadomość</h3>
+            {/* Left panel: Send message */}
+            <div className="chat-left">
+                <h2>Welcome, {username}!</h2>
+                <div className="send-box">
+                    <h3>Send Message</h3>
+                    <label>Recipient</label>
                     <input
                         type="text"
-                        placeholder="Odbiorca (nickname)"
+                        placeholder="Enter username"
                         value={recipient}
                         onChange={(e) => setRecipient(e.target.value)}
                     />
+                    <label>Message</label>
                     <textarea
-                        placeholder="Treść wiadomości"
+                        placeholder="Type your message..."
                         value={content}
                         onChange={(e) => setContent(e.target.value)}
                     />
-                    <input
-                        type="file"
-                        onChange={(e) => setFile(e.target.files ? e.target.files[0] : null)}
-                    />
-                    <button onClick={sendMessage}>Wyślij</button>
-                </div>
+                    <label>Attach file (optional)</label>
+                    <div className="file-input-wrapper">
+                        <label htmlFor="file-input" className="file-label">
+                            {file ? file.name : (<span>No file selected< FiPlus/></span>)}
+                        </label>
+                        <input
+                            type="file"
+                            id="file-input"
+                            className="file-input"
+                            onChange={(e) =>
+                                setFile(e.target.files ? e.target.files[0] : null)
+                            }
+                        />
+                    </div>
 
-                {/* Sekcja odebranych wiadomości */}
-                <div className="chat-section">
-                    <h3>Odebrane wiadomości</h3>
-                    <button onClick={fetchReceivedMessages}>Odśwież</button>
-                    <ul>
+                    <button className="send-button" onClick={sendMessage}>
+                        Send
+                    </button>
+                </div>
+            </div>
+
+            {/* Right panel: Received & Sent messages */}
+            <div className="chat-right">
+                <div className="received-section">
+                    <h3>Received Messages</h3>
+                    <div className="message-list">
                         {receivedMessages.map((msg) => (
-                            <li key={msg.id}>
-                                <strong>Od:</strong> {msg.author.username} <br />
-                                <strong>Treść:</strong> {msg.content}
-                                {/* Link do pobrania pliku (jeśli istnieje) */}
+                            <div key={msg.id} className="message-card">
+                                <p>
+                                    <strong>{msg.author.username}</strong>
+                                </p>
+                                <p>
+                                    {msg.content}
+                                </p>
                                 {msg.file && (
-                                    <>
-                                        <br />
-                                        <strong>Załącznik:</strong>{" "}
+                                    <p>
                                         <a
                                             href={`http://localhost:8081/api/files/download/${msg.id}`}
                                             target="_blank"
                                             rel="noreferrer"
                                         >
-                                            Pobierz plik
+                                            Download file
                                         </a>
-                                    </>
+                                    </p>
                                 )}
-                            </li>
+                            </div>
                         ))}
-                    </ul>
+                    </div>
                 </div>
 
-                {/* Sekcja wysłanych wiadomości */}
-                <div className="chat-section">
-                    <h3>Wysłane wiadomości</h3>
-                    <button onClick={fetchSentMessages}>Odśwież</button>
-                    <ul>
-                        {sentMessages.map((msg) => (
-                            <li key={msg.id}>
-                                <strong>Do:</strong>{" "}
-                                {msg.recipient ? msg.recipient.username : "Broadcast"} <br />
-                                <strong>Treść:</strong> {msg.content}
-                                {/* Link do pobrania pliku (jeśli istnieje) */}
-                                {msg.file && (
-                                    <>
-                                        <br />
-                                        <strong>Załącznik:</strong>{" "}
-                                        <a
-                                            href={`http://localhost:8081/api/files/download/${msg.id}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                        >
-                                            Pobierz plik
-                                        </a>
-                                    </>
-                                )}
-                            </li>
-                        ))}
-                    </ul>
+                <div className={`sent-section ${showSent ? "expanded" : ""}`}>
+                    <h3 onClick={toggleSent} className="collapsible-header">
+                        <h3>Sent Messages {showSent ? "▲" : "▼"}</h3>
+                    </h3>
+                    {showSent && (
+                        <div className="message-list">
+                            {sentMessages.map((msg) => (
+                                <div key={msg.id} className="message-card">
+                                    <p>
+                                        <strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong>
+                                    </p>
+                                    <p>
+                                        {msg.content}
+                                    </p>
+                                    {msg.file && (
+                                        <p>
+                                            <a
+                                                href={`http://localhost:8081/api/files/download/${msg.id}`}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                            >
+                                                Download file
+                                            </a>
+                                        </p>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>
