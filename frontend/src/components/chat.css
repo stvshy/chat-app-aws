@@ -97,8 +97,8 @@ svg {
     margin-left: 3.5px;
 }
 svg.sent-icon.up{
-    margin-bottom: -3px;
-    margin-left: -1px;
+    margin-bottom: -1.5px;
+    margin-left: 3px;
 }
 svg.sent-icon.down{
     margin-top: 23px;
@@ -464,4 +464,129 @@ h3.collapsible-header.sent-header {
 .sent-panel .sent-header {
     margin: 0 0 0.5rem 4px;
     font-weight: normal;
+}
+/* Sent message card: zmieniony kolor względem received */
+.message-card.sent-message-card {
+    background: #2d313a; /* nowy kolor dla Sent messages */
+    color: #fff;
+}
+
+/* Sent messages panel z animacją musi mieć overflow ukryty, by nie wychodziły poza obszar */
+.sent-section-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden; /* Ukrycie treści spoza panelu */
+    border-radius: 8px;
+    z-index: 2;
+}
+
+/* Sent panel, rozsunięty: nowe kolory */
+.sent-panel {
+    background: #2b2d33;
+    border-radius: 8px;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Floating toggle button */
+.sent-toggle-button {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2b2d33;
+    border: none;
+    border-radius: 20px;
+    width: 150px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    color: #fff;
+}
+
+.sent-toggle-button span {
+    font-size: 12.5px;
+    display: flex;
+    align-items: center;
+}
+
+/* Scrollowalna lista wiadomości w sent-panel */
+.sent-message-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    /*padding-right: 0.5rem;*/
+}
+/* Wrapper sent-section-wrapper tylko gdy jest expanded */
+.sent-section-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 269px;
+    height: 100%;
+    background-color: transparent;
+    border-radius: 8px;
+    overflow: hidden;
+    z-index: 2;
+    background: #2c2d33;
+    padding-bottom: 27px;
+}
+
+/* sent-panel (wysuwany w górę) */
+.sent-panel {
+    background: #2b2d33;
+    border-radius: 8px;
+    width: 100%; /* TAK SAMO SZEROKIE JAK RECEIVED MESSAGES */
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+}
+
+/* Floating toggle button - dopasowanie pozycji */
+.sent-toggle-button {
+    position: absolute;
+    bottom: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #2b2d33;
+    color: #fff;
+    border: none;
+    border-radius: 20px;
+    width: 150px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+}
+
+/* Lista wiadomości wewnątrz panelu sent (scrollowanie) */
+.sent-message-list {
+    flex: 1;
+    overflow-y: auto;
+    /*padding-right: 0.5rem;*/
+}
+
+/* Zmniejsz marginesy i paddingi sent-header */
+.sent-header {
+    cursor: pointer;
+    font-weight: normal;
+    font-size: 15px;
+    margin-bottom: 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
 }

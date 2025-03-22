@@ -3,6 +3,7 @@ import "./chat.css";
 import { FiPlus } from "react-icons/fi";
 import { FiArrowRight, FiChevronDown } from "react-icons/fi";
 import { FiChevronUp } from "react-icons/fi";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface IMessage {
     id: number;
@@ -185,9 +186,7 @@ export default function Chat({ token, username }: ChatProps) {
                                     <p>{msg.content}</p>
                                     {msg.file && (
                                         <p>
-                                            <a href={`http://localhost:8081/api/files/download/${msg.id}`}
-                                               target="_blank"
-                                               rel="noreferrer">
+                                            <a href={`http://localhost:8081/api/files/download/${msg.id}`} target="_blank" rel="noreferrer">
                                                 Download file
                                             </a>
                                         </p>
@@ -197,38 +196,47 @@ export default function Chat({ token, username }: ChatProps) {
                         </div>
                     </div>
 
-                    <div className="sent-section-wrapper">
-                        {showSent ? (
-                            <div className="sent-panel">
-                                <div className="sent-header" onClick={toggleSent}>
-                                    <span>Sent Messages</span> <FiChevronDown className="sent-icon down" size={14} />
+                    <AnimatePresence>
+                        {showSent && (
+                            <motion.div
+                                initial={{ y: '100%', opacity: 0 }}
+                                animate={{ y: 0, opacity: 1 }}
+                                exit={{ y: '100%', opacity: 0 }}
+                                transition={{ duration: 0.35 }}
+                                className="sent-section-wrapper"
+                            >
+                                <div className="sent-panel">
+                                    <div className="sent-header" onClick={toggleSent}>
+                                        <span>Sent Messages</span>
+                                        <FiChevronDown className="sent-icon down" size={14} />
+                                    </div>
+                                    <div className="message-list sent-message-list">
+                                        {sentMessages.map((msg) => (
+                                            <div key={msg.id} className="message-card sent-message-card">
+                                                <p><strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong></p>
+                                                <p>{msg.content}</p>
+                                                {msg.file && (
+                                                    <p>
+                                                        <a href={`http://localhost:8081/api/files/download/${msg.id}`} target="_blank" rel="noreferrer">
+                                                            Download file
+                                                        </a>
+                                                    </p>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
                                 </div>
-                                <div className="message-list">
-                                    {sentMessages.map((msg) => (
-                                        <div key={msg.id} className="message-card">
-                                            <p><strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong></p>
-                                            <p>{msg.content}</p>
-                                            {msg.file && (
-                                                <p>
-                                                    <a href={`http://localhost:8081/api/files/download/${msg.id}`}
-                                                       target="_blank"
-                                                       rel="noreferrer">
-                                                        Download file
-                                                    </a>
-                                                </p>
-                                            )}
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        ) : null}
-                        {!showSent && (
-                            <button onClick={toggleSent} className="sent-toggle-button">
-                                <span>Sent Messages <FiChevronUp className="sent-icon up" size={14} /></span>
-                            </button>
+                            </motion.div>
                         )}
-                    </div>
+                    </AnimatePresence>
+
+                    {!showSent && (
+                        <button onClick={toggleSent} className="sent-toggle-button">
+                            <span>Sent Messages <FiChevronUp className="sent-icon up" size={14} /></span>
+                        </button>
+                    )}
                 </div>
+
             </div>
         </div>
     );
