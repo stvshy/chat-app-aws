@@ -82,39 +82,66 @@
     color: #f0f0ff;
     border: 1px solid #3b3b4f;
     border-radius: 50px;
-    padding: 0.39rem 1rem;
+    padding: 0.32rem 1rem;
     cursor: pointer;
     text-align: center;
+}
+span{
+    font-size: 15.5px;
+    margin-bottom: -8px;
+    margin-top: 16px;
+    /*margin-left: 4px;*/
+}
+svg {
+    margin-bottom: -2.5px;
+    margin-left: 3.5px;
+}
+svg.sent-icon.up{
+    margin-bottom: -3px;
+    margin-left: -1px;
+}
+svg.sent-icon.down{
+    margin-top: 23px;
+    margin-right: 134px;
 }
 
 /* Hide the default file input */
 .file-input {
     display: none;
 }
+.send-button-container {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+    margin-top: auto; /* Umożliwia przyklejenie do dołu, jeżeli rodzic ma flex-direction: column */
+}
 
 /* Send button */
 .send-button {
     background: #61dafb;
     color: #f0f7fa;
-    width: 100px;
-    padding: 0.5rem;
+    width: auto;
+    padding: 0.5rem 1rem;
     margin-top: 0.5rem;
     border: none;
     border-radius: 20px;
     cursor: pointer;
     transition: background 0.25s;
+    font-size: 14px;
 }
 
 .send-button:hover {
     background: #52c7e5;
 }
-
+.send-arrow {
+    margin-bottom: -2px
+}
 /* Right panel */
 .chat-right {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1rem;
 }
 
 /* Received section */
@@ -122,11 +149,15 @@
     background: #3a3f47;
     padding: 1rem;
     border-radius: 8px;
+    height: 445px;
+    width: 300px;
+    overflow: hidden;
 }
 
 .received-section h3 {
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.5rem 4px;
     font-weight: 500;
+    font-size: 15.5px
 }
 
 /* Sent section */
@@ -135,20 +166,42 @@
     background: transparent;
     border-radius: 8px;
     min-height: 50px;
-    overflow: hidden;
+    height: 200px;
+    width: 300px;
+    overflow: hidden
 }
 
 .sent-section.expanded {
     background: #3a3f47;
     padding: 1rem;
 }
+.sent-header {
+    font-weight: normal; /* nie pogrubiony */
+    background: transparent; /* nagłówek bez tła, jeśli ma być transparentny */
+    /*padding: 0.5rem 1rem;*/
+    border-radius: 8px;
+    margin-top: 0.66rem; /* umieść tuż pod Received Messages */
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 15.5px
+}
+h3.collapsible-header.sent-header {
+    margin: 0 0 0.5rem 4px;
+    font-weight: 500;
+    font-size: 15.5px
+}
+.sent-arrow {
+    margin-left: 0.5rem;
+}
 
 .sent-section .collapsible-header {
     background: transparent;
-    padding: 0.5rem 1rem;
+    margin: 0 0 0.5rem 4px;
+    font-weight: 500;
+    font-size: 15.5px;
     border-radius: 8px;
     color: #fff;
-    font-weight: bold;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -159,7 +212,7 @@
 .message-list {
     max-height: 400px;
     overflow-y: auto;
-    margin-top: 1rem;
+    margin-top: 0.66rem;
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
@@ -190,4 +243,225 @@
 
 .message-card a:hover {
     text-decoration: underline;
+}
+/* Wewnątrz tych sekcji lista wiadomości powinna zajmować stałą przestrzeń i przewijać się pionowo */
+.received-section .message-list,
+.sent-section .message-list {
+    height: calc(100% - 40px); /* odejmujemy wysokość nagłówka – dostosuj wartość (np. 40px) */
+    overflow-y: auto;
+}
+
+/* 2. Upewnij się, że pojedyncze karty wiadomości mają naturalną wysokość,
+   a jedynie ich zawartość (lista) przewija się */
+.message-card {
+    /* Nie narzucamy stałej wysokości – karty mogą się wydłużać w pionie */
+    width: 100%;  /* utrzymujemy stałą szerokość, dostosowaną do kontenera */
+    box-sizing: border-box;
+}
+
+/* 3. Ustawienia dla nagłówka sekcji Sent Messages:
+   - Tekst nie jest pogrubiony.
+   - Ikonka (np. FiChevronDown) jest obok tekstu z małym odstępem. */
+.sent-section .collapsible-header {
+    background: transparent; /* nagłówek bez tła, gdy sekcja jest zwinięta */
+    margin: 0 0 0.5rem 4px;
+    font-weight: 500;
+    font-size: 15.5px;
+    border-radius: 8px;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start; /* wszystko przy lewej */
+    gap: 0.3rem;  /* mały odstęp między tekstem a ikoną */
+    cursor: pointer;
+}
+
+/* 4. (Opcjonalnie) Upewnij się, że kontener przycisku "Send" w panelu wysyłania jest wyrównany do dołu */
+.send-box {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    /* Używamy margin-top: auto na kontenerze przycisku, jeśli to konieczne w strukturze HTML */
+}
+
+.send-button-container {
+    margin-top: auto; /* przykleja przycisk do dołu kontenera wysyłania */
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
+}
+
+/* Upewnij się, że chat-right jest relatywnie pozycjonowany */
+.chat-right {
+    position: relative;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 2rem;
+}
+
+/* Wrapper dla panelu sent */
+.sent-panel-wrapper {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 2;
+}
+
+/* Panel sent: domyślnie tylko nagłówek (collapsed) */
+.sent-panel.collapsed {
+    height: 40px; /* wysokość nagłówka */
+    background: rgba(58,63,71,0.8); /* lekko przezroczyste tło */
+    transition: height 0.3s ease;
+}
+
+/* Rozwinięty panel sent */
+.sent-panel.expanded {
+    height: 450px; /* przykrywa całą chat-right */
+    background: #3a3f47;
+    transition: height 0.3s ease;
+}
+
+/* Nagłówek w panelu sent – wyświetlany przy obu stanach */
+.sent-header {
+    /*padding: 0.5rem 1rem;*/
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    cursor: pointer;
+    margin: 0 0 0.5rem 4px;
+    font-weight: 500;
+    font-size: 15.5px;
+}
+
+/* Ikona w nagłówku */
+.sent-icon {
+    font-size: 14px;
+}
+
+/* Lista wiadomości wewnątrz panelu sent */
+.sent-panel .message-list {
+    height: calc(100% - 40px); /* odejmujemy wysokość nagłówka */
+    overflow-y: auto;
+}
+
+/* Floating toggle button – widoczny tylko gdy panel collapsed */
+
+/* Wrapper dla Received i Sent (stała wysokość) */
+.messages-wrapper {
+    position: relative;
+    width: 100%;
+    height: 450px; /* Stała wysokość dla obu sekcji */
+}
+
+/* Received messages: przewijalna lista */
+.received-section {
+    background: #3a3f47;
+    padding: 1rem;
+    border-radius: 8px;
+    height: 477px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* Sent section wrapper – pozycjonowany absolutnie w obrębie messages-wrapper */
+.sent-section-wrapper {
+    position: absolute;
+    top: 0;
+    left: 0;
+    padding: 1rem;
+    padding-top: 0;
+    padding-bottom: 0;
+    background-color: #2b2d33;
+    border-radius: 8px;
+}
+
+/* Sent panel, gdy rozsunięty – przykrywa Received, ma ten sam rozmiar */
+.sent-panel {
+    background: #2b2d33;
+    border-radius: 8px;
+    width: 100%;
+    height: 478px;
+    display: flex
+;
+    flex-direction: column;
+    transition: transform 0.3s ease;
+    z-index: 2;
+    /* margin-bottom: -43px; */
+}
+
+/* Nagłówek panelu Sent (widoczny przy rozsunięciu) */
+.sent-header {
+    /*padding: 0.5rem 1rem;*/
+    cursor: pointer;
+    font-weight: normal;
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+}
+.sent-toggle-button {
+    position: absolute;
+    bottom: -460px;
+    left: 151px;
+    background: #2b2d33;
+    border: none;
+    border-radius: 20px;
+    width: 150px;
+    height: 33px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 3;
+    align-content: center;
+}
+/* Floating toggle button (gdy panel Sent jest schowany) */
+.sent-toggle-button {
+    transform: translateX(-50%);
+    flex-direction: column;
+    font-size: 12.5px;
+}
+
+.sent-toggle-button span {
+    font-size: 12.5px;
+    margin-bottom: 18px;
+}
+
+/* Lista wiadomości wewnątrz panelu (Received oraz Sent) */
+.message-list {
+    flex: 1;
+    overflow-y: auto;
+    margin-top: 0.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+}
+
+/* Pojedyncza wiadomość – zachowuje naturalną wysokość, ale stała szerokość */
+.message-card {
+    background: #4a4f57;
+    padding: 0.8rem;
+    border-radius: 8px;
+    box-sizing: border-box;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+}
+
+/* Ustawienie linku Download file */
+.message-card a {
+    color: #61dafb;
+    text-decoration: none;
+}
+.message-card a:hover {
+    text-decoration: underline;
+}
+
+/* Dla nagłówka Received i Sent – marginesy, font-weight normal */
+.received-section h3,
+.sent-panel .sent-header {
+    margin: 0 0 0.5rem 4px;
+    font-weight: normal;
 }

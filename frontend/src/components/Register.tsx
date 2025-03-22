@@ -12,14 +12,14 @@ export default function Register() {
             body: JSON.stringify({ username, password }),
         });
         const text = await res.text();
-        alert(res.ok ? "Zarejestrowano!" : "Błąd rejestracji: " + text);
+        alert(res.ok ? "Your account has been created!" : "Registration error:" + text);
         setUsername("");
         setPassword("");
     };
 
     return (
         <div className="card register-card">
-            <h2>Rejestracja</h2>
+            <h2>Create an account</h2>
             <input
                 placeholder="Username"
                 value={username}
@@ -32,7 +32,7 @@ export default function Register() {
                 onChange={(e) => setPassword(e.target.value)}
             />
             <button className="send-button" onClick={handleRegister}>
-                Zarejestruj
+                Register
             </button>
         </div>
     );

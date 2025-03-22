@@ -18,12 +18,12 @@ export default function Login({
         if (res.ok) {
             const { token } = await res.json();
             onLogin(token, username);
-        } else alert("Niepoprawne dane");
+        } else alert("Incorrect login credentials");
     };
 
     return (
         <div className="card login-card">
-            <h2>Logowanie</h2>
+            <h2>Sign in</h2>
             <input
                 placeholder="Username"
                 value={username}
@@ -36,7 +36,7 @@ export default function Login({
                 onChange={(e) => setPassword(e.target.value)}
             />
             <button className="send-button" onClick={handleLogin}>
-                Zaloguj
+                Login
             </button>
         </div>
     );

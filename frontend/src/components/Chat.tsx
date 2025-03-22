@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import "./chat.css";
 import { FiPlus } from "react-icons/fi";
+import { FiArrowRight, FiChevronDown } from "react-icons/fi";
+import { FiChevronUp } from "react-icons/fi";
 
 interface IMessage {
     id: number;
@@ -162,62 +164,30 @@ export default function Chat({ token, username }: ChatProps) {
                         />
                     </div>
 
-                    <button className="send-button" onClick={sendMessage}>
-                        Send
-                    </button>
+                    <div className="send-button-container">
+                        <button className="send-button" onClick={sendMessage}>
+                            Send <FiArrowRight className="send-arrow" />
+                        </button>
+                    </div>
+
                 </div>
             </div>
 
             {/* Right panel: Received & Sent messages */}
             <div className="chat-right">
-                <div className="received-section">
-                    <h3>Received Messages</h3>
-                    <div className="message-list">
-                        {receivedMessages.map((msg) => (
-                            <div key={msg.id} className="message-card">
-                                <p>
-                                    <strong>{msg.author.username}</strong>
-                                </p>
-                                <p>
-                                    {msg.content}
-                                </p>
-                                {msg.file && (
-                                    <p>
-                                        <a
-                                            href={`http://localhost:8081/api/files/download/${msg.id}`}
-                                            target="_blank"
-                                            rel="noreferrer"
-                                        >
-                                            Download file
-                                        </a>
-                                    </p>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-                </div>
-
-                <div className={`sent-section ${showSent ? "expanded" : ""}`}>
-                    <h3 onClick={toggleSent} className="collapsible-header">
-                        <h3>Sent Messages {showSent ? "▲" : "▼"}</h3>
-                    </h3>
-                    {showSent && (
+                <div className="messages-wrapper">
+                    <div className="received-section">
+                        <h3>Received Messages</h3>
                         <div className="message-list">
-                            {sentMessages.map((msg) => (
+                            {receivedMessages.map((msg) => (
                                 <div key={msg.id} className="message-card">
-                                    <p>
-                                        <strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong>
-                                    </p>
-                                    <p>
-                                        {msg.content}
-                                    </p>
+                                    <p><strong>{msg.author.username}</strong></p>
+                                    <p>{msg.content}</p>
                                     {msg.file && (
                                         <p>
-                                            <a
-                                                href={`http://localhost:8081/api/files/download/${msg.id}`}
-                                                target="_blank"
-                                                rel="noreferrer"
-                                            >
+                                            <a href={`http://localhost:8081/api/files/download/${msg.id}`}
+                                               target="_blank"
+                                               rel="noreferrer">
                                                 Download file
                                             </a>
                                         </p>
@@ -225,7 +195,39 @@ export default function Chat({ token, username }: ChatProps) {
                                 </div>
                             ))}
                         </div>
-                    )}
+                    </div>
+
+                    <div className="sent-section-wrapper">
+                        {showSent ? (
+                            <div className="sent-panel">
+                                <div className="sent-header" onClick={toggleSent}>
+                                    <span>Sent Messages</span> <FiChevronDown className="sent-icon down" size={14} />
+                                </div>
+                                <div className="message-list">
+                                    {sentMessages.map((msg) => (
+                                        <div key={msg.id} className="message-card">
+                                            <p><strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong></p>
+                                            <p>{msg.content}</p>
+                                            {msg.file && (
+                                                <p>
+                                                    <a href={`http://localhost:8081/api/files/download/${msg.id}`}
+                                                       target="_blank"
+                                                       rel="noreferrer">
+                                                        Download file
+                                                    </a>
+                                                </p>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : null}
+                        {!showSent && (
+                            <button onClick={toggleSent} className="sent-toggle-button">
+                                <span>Sent Messages <FiChevronUp className="sent-icon up" size={14} /></span>
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
         </div>
