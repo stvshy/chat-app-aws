@@ -1,7 +1,8 @@
 version: '3.8'
 
 services:
-  postgres:
+
+  postgres_container:
     image: postgres:latest
     container_name: postgres_container
     environment:
@@ -11,31 +12,35 @@ services:
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
+    networks:
+      - projektchmury-network
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql/data
 
-  backend:
+  backend-container:
     build: ./backend
-    container_name: backend-container
     ports:
       - "8081:8080"
     depends_on:
-      - postgres
+      - postgres_container
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/mydatabase
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_container:5432/mydatabase
       SPRING_DATASOURCE_USERNAME: admin
       SPRING_DATASOURCE_PASSWORD: admin
-    volumes:
-      - ./backend:/app
+    networks:
+      - projektchmury-network
+    container_name: backend_container
 
-  frontend:
+  frontend-container:
     build: ./frontend
-    container_name: frontend-container
     ports:
       - "5173:5173"
-    volumes:
-      - ./frontend/src:/app/src
-#      - /app/node_modules
+    networks:
+      - projektchmury-network
+    container_name: frontend_container
+networks:
+  projektchmury-network:
+    driver: bridge
 
 volumes:
-  pgdata:
+  postgres-data:

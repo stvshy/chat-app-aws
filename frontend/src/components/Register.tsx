@@ -4,9 +4,9 @@ import "./auth.css";
 export default function Register() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-
+    const apiUrl = import.meta.env.VITE_API_URL;
     const handleRegister = async () => {
-        const res = await fetch("http://localhost:8081/api/auth/register", {
+        const res = await fetch(`http://${apiUrl}/api/auth/register`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ username, password }),
