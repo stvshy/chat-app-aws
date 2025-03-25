@@ -10,6 +10,7 @@ import pl.projekt_chmury.backend.model.Message;
 import pl.projekt_chmury.backend.model.User;
 import pl.projekt_chmury.backend.repository.MessageRepository;
 import pl.projekt_chmury.backend.repository.UserRepository;
+import pl.projekt_chmury.backend.service.S3Service;
 
 import java.io.File;
 import java.io.IOException;
@@ -22,6 +23,8 @@ public class MessageController {
     private static final Logger logger = LoggerFactory.getLogger(MessageController.class);
     @Autowired
     private MessageRepository messageRepository;
+    @Autowired
+    private S3Service s3Service;
 
     @Autowired
     private UserRepository userRepository;
@@ -82,39 +85,30 @@ public class MessageController {
             @RequestParam("author") String author,
             @RequestParam("content") String content,
             @RequestParam(value = "recipient", required = false) String recipient,
-            @RequestParam("file") MultipartFile file) throws IOException {
+            @RequestParam("file") MultipartFile file
+    ) throws IOException {
 
-        // Pobierz nadawcę
+        // 1. Pobierz nadawcę i odbiorcę (jak dotychczas):
         User authorUser = userRepository.findByUsername(author)
                 .orElseThrow(() -> new RuntimeException("Sender not found"));
 
-        // Pobierz odbiorcę, jeśli został podany
         User recipientUser = null;
         if (recipient != null && !recipient.isEmpty()) {
             recipientUser = userRepository.findByUsername(recipient)
                     .orElseThrow(() -> new RuntimeException("Recipient not found"));
         }
 
-        // Używamy absolutnej ścieżki do katalogu uploads (np. "/uploads")
-        String uploadDir = "/uploads";
-        File uploadsDir = new File(uploadDir);
-        if (!uploadsDir.exists()) {
-            // Używamy mkdirs() – tworzy wszystkie brakujące katalogi
-            uploadsDir.mkdirs();
-        }
+        // 2. Wyślij plik do S3 i pobierz URL:
+        String s3Url = s3Service.uploadFile(file);
 
-        // Używamy oryginalnej nazwy pliku – w produkcji warto generować unikalną nazwę
-        String originalFilename = file.getOriginalFilename();
-        File destination = new File(uploadsDir, originalFilename);
-        file.transferTo(destination);
-
-        // Tworzymy nową wiadomość i ustawiamy ścieżkę do pliku
+        // 3. Zapisz wiadomość w bazie, w polu file trzymaj URL do S3
         Message msg = new Message(authorUser, content);
         msg.setRecipient(recipientUser);
-        msg.setFile(destination.getAbsolutePath());
+        msg.setFile(s3Url);
 
         return messageRepository.save(msg);
     }
+
 
 
 }
