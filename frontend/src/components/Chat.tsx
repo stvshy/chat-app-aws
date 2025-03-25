@@ -87,7 +87,7 @@ export default function Chat({ token, username }: ChatProps) {
                 formData.append("content", content);
                 formData.append("recipient", recipient);
                 formData.append("file", file);
-                const res = await fetch('http://${apiUrl}/api/messages/with-file', {
+                const res = await fetch(`http://${apiUrl}/api/messages/with-file`, {
                     method: "POST",
                     headers: { Authorization: `Bearer ${token}` },
                     body: formData,
@@ -105,7 +105,7 @@ export default function Chat({ token, username }: ChatProps) {
                 }
             } else {
                 const body = { author: username, content, recipient };
-                const res = await fetch("http://${apiUrl}/api/messages", {
+                const res = await fetch(`http://${apiUrl}/api/messages`, {
                     method: "POST",
                     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
                     body: JSON.stringify(body),
@@ -218,7 +218,7 @@ export default function Chat({ token, username }: ChatProps) {
                                                 <p>{msg.content}</p>
                                                 {msg.file && (
                                                     <p>
-                                                        <a href={`http://localhost:8081/api/files/download/${msg.id}`} target="_blank" rel="noreferrer">
+                                                        <a href={`http://${apiUrl}/api/files/download/${msg.id}`} target="_blank" rel="noreferrer">
                                                             Download file
                                                         </a>
                                                     </p>

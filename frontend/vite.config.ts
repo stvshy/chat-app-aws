@@ -8,5 +8,8 @@ export default defineConfig({
     alias: {
       'react-icons': path.resolve(__dirname, 'node_modules/react-icons')
     }
+  },
+  server: {
+    allowedHosts: ['projektchmury-frontend.us-east-1.elasticbeanstalk.com']
   }
 })

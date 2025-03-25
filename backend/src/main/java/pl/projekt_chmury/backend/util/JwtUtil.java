@@ -4,7 +4,10 @@ import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import io.jsonwebtoken.security.Keys;
+import org.springframework.context.annotation.Bean;
 import org.springframework.stereotype.Component;
+import pl.projekt_chmury.backend.filter.JwtFilter;
+import pl.projekt_chmury.backend.repository.UserRepository;
 
 import java.nio.charset.StandardCharsets;
 import java.security.Key;
@@ -46,4 +49,11 @@ public class JwtUtil {
             return false;
         }
     }
+    @Bean
+    public JwtFilter jwtFilter(JwtUtil jwtUtil, UserRepository userRepository) {
+        return new JwtFilter(jwtUtil, userRepository);
+    }
+
+
 }
+

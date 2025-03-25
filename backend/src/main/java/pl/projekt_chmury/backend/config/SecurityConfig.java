@@ -55,8 +55,7 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtUtil jwtUtil,
-                                           UserRepository userRepository) throws Exception {
+                                           JwtFilter jwtFilter) throws Exception {
         http
                 .cors(withDefaults())
                 .csrf(csrf -> csrf.disable())
@@ -67,8 +66,9 @@ public class SecurityConfig {
                         .anyRequest().authenticated()
                 )
                 // <-- Dodaj JWT Filter PRZED UsernamePasswordAuthenticationFilter
-                .addFilterBefore(new JwtFilter(jwtUtil, userRepository),
+                .addFilterBefore(jwtFilter,
                         org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
+
 
         return http.build();
     }
@@ -80,12 +80,17 @@ public class SecurityConfig {
             @Override
             public void addCorsMappings(CorsRegistry registry) {
                 registry.addMapping("/**")
-                        .allowedOrigins("http://localhost:5173")
+                        .allowedOrigins(
+                                "http://localhost:5173",
+                                "http://projektchmury-frontend.us-east-1.elasticbeanstalk.com"
+                        )
                         .allowedMethods("*")
                         .allowedHeaders("*")
-                        .exposedHeaders("Authorization");
+                        .exposedHeaders("Authorization")
+                        .allowCredentials(true);  // Umożliwia przesyłanie ciasteczek lub autoryzacji przez CORS
             }
         };
     }
+
 
 }
