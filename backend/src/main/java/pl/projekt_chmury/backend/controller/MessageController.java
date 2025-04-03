@@ -7,9 +7,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 import pl.projekt_chmury.backend.model.Message;
-import pl.projekt_chmury.backend.model.User;
 import pl.projekt_chmury.backend.repository.MessageRepository;
-import pl.projekt_chmury.backend.repository.UserRepository;
 import pl.projekt_chmury.backend.service.S3Service;
 
 import java.io.File;
@@ -26,9 +24,6 @@ public class MessageController {
     @Autowired
     private S3Service s3Service;
 
-    @Autowired
-    private UserRepository userRepository;
-
     // Endpoint: wiadomości wysłane przez danego użytkownika
     @GetMapping("/sent")
     public List<Message> getSentMessages(@RequestParam String username) {
@@ -44,7 +39,6 @@ public class MessageController {
     }
 
     // Endpoint tworzenia wiadomości
-    // Oczekujemy JSON: {"author": "nadawcaUsername", "content": "treść", "recipient": "odbiorcaUsername"}
     @PostMapping
     public Message addMessage(@RequestBody Map<String, String> body) {
         String authorUsername = body.get("author");
@@ -54,21 +48,12 @@ public class MessageController {
         logger.debug("Próba zapisu wiadomości. Nadawca: {}, treść: {}, odbiorca: {}",
                 authorUsername, content, recipientUsername);
 
-        User author = userRepository.findByUsername(authorUsername)
-                .orElseThrow(() -> new RuntimeException("Sender not found"));
-
-        User recipient = null;
-        if (recipientUsername != null && !recipientUsername.isEmpty()) {
-            recipient = userRepository.findByUsername(recipientUsername)
-                    .orElseThrow(() -> new RuntimeException("Recipient not found"));
-        }
-
-        Message msg = new Message(author, content);
-        msg.setRecipient(recipient);
+        Message msg = new Message(authorUsername, content);
+        msg.setRecipientUsername(recipientUsername);
         return messageRepository.save(msg);
     }
 
-    // Endpoint do uploadu pliku (pozostaje bez zmian)
+    // Endpoint do uploadu pliku pozostaje bez zmian
     @PostMapping(value = "/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public String uploadFile(@RequestParam("file") MultipartFile file) throws IOException {
         File uploadsDir = new File("uploads");
@@ -80,6 +65,7 @@ public class MessageController {
         return "Plik zapisany: " + destination.getAbsolutePath();
     }
 
+    // Endpoint tworzenia wiadomości z plikiem
     @PostMapping(value = "/with-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Message addMessageWithFile(
             @RequestParam("author") String author,
@@ -87,28 +73,11 @@ public class MessageController {
             @RequestParam(value = "recipient", required = false) String recipient,
             @RequestParam("file") MultipartFile file
     ) throws IOException {
-
-        // 1. Pobierz nadawcę i odbiorcę (jak dotychczas):
-        User authorUser = userRepository.findByUsername(author)
-                .orElseThrow(() -> new RuntimeException("Sender not found"));
-
-        User recipientUser = null;
-        if (recipient != null && !recipient.isEmpty()) {
-            recipientUser = userRepository.findByUsername(recipient)
-                    .orElseThrow(() -> new RuntimeException("Recipient not found"));
-        }
-
-        // 2. Wyślij plik do S3 i pobierz URL:
+        // Wyślij plik do S3 i pobierz URL:
         String s3Url = s3Service.uploadFile(file);
-
-        // 3. Zapisz wiadomość w bazie, w polu file trzymaj URL do S3
-        Message msg = new Message(authorUser, content);
-        msg.setRecipient(recipientUser);
+        Message msg = new Message(author, content);
+        msg.setRecipientUsername(recipient);
         msg.setFile(s3Url);
-
         return messageRepository.save(msg);
     }
-
-
-
 }

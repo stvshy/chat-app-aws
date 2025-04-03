@@ -38,6 +38,7 @@ export default function Chat({ token, username }: ChatProps) {
     // Controls expansion of sent messages panel
     const [showSent, setShowSent] = useState(false);
     const apiUrl = import.meta.env.VITE_API_URL;
+    console.log("Token przekazywany do fetch:", token);
 
     const fetchSentMessages = async () => {
         try {

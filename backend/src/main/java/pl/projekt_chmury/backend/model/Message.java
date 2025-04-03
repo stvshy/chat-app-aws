@@ -9,46 +9,39 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Nadawca wiadomości
-    @ManyToOne
-    @JoinColumn(name = "author_id", nullable = false)
-    private User author;
+    // Zamiast relacji do User przechowujemy tylko nazwę użytkownika
+    private String authorUsername;
 
-    // Odbiorca wiadomości – może być null (broadcast)
-    @ManyToOne
-    @JoinColumn(name = "recipient_id")
-    private User recipient;
+    private String recipientUsername; // może być null dla broadcastu
 
     private String content;
+    private String file;
 
     public Message() {}
 
-    private String file;
-
-    public Message(User author, String content) {
-        this.author = author;
+    public Message(String authorUsername, String content) {
+        this.authorUsername = authorUsername;
         this.content = content;
     }
 
     // Gettery i settery
-
     public Long getId() {
         return id;
     }
     public void setId(Long id) { this.id = id; }
 
-    public User getAuthor() {
-        return author;
+    public String getAuthorUsername() {
+        return authorUsername;
     }
-    public void setAuthor(User author) {
-        this.author = author;
+    public void setAuthorUsername(String authorUsername) {
+        this.authorUsername = authorUsername;
     }
 
-    public User getRecipient() {
-        return recipient;
+    public String getRecipientUsername() {
+        return recipientUsername;
     }
-    public void setRecipient(User recipient) {
-        this.recipient = recipient;
+    public void setRecipientUsername(String recipientUsername) {
+        this.recipientUsername = recipientUsername;
     }
 
     public String getContent() {
@@ -61,7 +54,6 @@ public class Message {
     public String getFile() {
         return file;
     }
-
     public void setFile(String file) {
         this.file = file;
     }

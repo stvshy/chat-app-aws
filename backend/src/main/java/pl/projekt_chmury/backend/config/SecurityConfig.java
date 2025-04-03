@@ -1,79 +1,53 @@
 package pl.projekt_chmury.backend.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpMethod;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.ProviderManager;
-import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.oauth2.jwt.*;
+import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
+import org.springframework.security.oauth2.core.OAuth2TokenValidator;
+import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.web.SecurityFilterChain;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import pl.projekt_chmury.backend.filter.JwtFilter;
-import pl.projekt_chmury.backend.repository.UserRepository;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import pl.projekt_chmury.backend.model.User;
-import pl.projekt_chmury.backend.util.JwtUtil;
 
 import static org.springframework.security.config.Customizer.withDefaults;
 
 @Configuration
 public class SecurityConfig {
 
-    @Bean
-    public PasswordEncoder passwordEncoder() {
-        return new BCryptPasswordEncoder();
-    }
+    @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
+    private String issuerUri;
 
-    // Używamy UserDetailsService do ładowania użytkownika
-    @Bean
-    public UserDetailsService userDetailsService(UserRepository userRepository) {
-        return username -> {
-            User user = userRepository.findByUsername(username)
-                    .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-            return org.springframework.security.core.userdetails.User
-                    .withUsername(user.getUsername())
-                    .password(user.getPassword())
-                    .roles("USER")
-                    .build();
-        };
-    }
+    @Value("${aws.cognito.clientId}")
+    private String clientId; // Używamy Client ID jako audience
 
-    // Konfiguracja AuthenticationManager przy użyciu DaoAuthenticationProvider
     @Bean
-    public AuthenticationManager authenticationManager(UserDetailsService userDetailsService) {
-        DaoAuthenticationProvider provider = new DaoAuthenticationProvider();
-        provider.setUserDetailsService(userDetailsService);
-        provider.setPasswordEncoder(passwordEncoder());
-        return new ProviderManager(provider);
+    public JwtDecoder jwtDecoder() {
+        NimbusJwtDecoder jwtDecoder = (NimbusJwtDecoder) JwtDecoders.fromOidcIssuerLocation(issuerUri);
+        OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(clientId);
+        OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
+        OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
+        jwtDecoder.setJwtValidator(validator);
+        return jwtDecoder;
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http,
-                                           JwtFilter jwtFilter) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
                 .cors(withDefaults())
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/files/download/**").permitAll()  // <-- dodaj to
+                        .requestMatchers("/api/files/download/**").permitAll()
                         .anyRequest().authenticated()
                 )
-                // <-- Dodaj JWT Filter PRZED UsernamePasswordAuthenticationFilter
-                .addFilterBefore(jwtFilter,
-                        org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter.class);
-
-
+                .oauth2ResourceServer(oauth2 -> oauth2.jwt());
         return http.build();
     }
 
-
+    // Konfiguracja CORS pozostaje bez zmian
     @Bean
     public WebMvcConfigurer corsConfigurer() {
         return new WebMvcConfigurer() {
@@ -87,10 +61,8 @@ public class SecurityConfig {
                         .allowedMethods("*")
                         .allowedHeaders("*")
                         .exposedHeaders("Authorization")
-                        .allowCredentials(true);  // Umożliwia przesyłanie ciasteczek lub autoryzacji przez CORS
+                        .allowCredentials(true);
             }
         };
     }
-
-
 }
