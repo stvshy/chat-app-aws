@@ -65,7 +65,6 @@ public class MessageController {
         return "Plik zapisany: " + destination.getAbsolutePath();
     }
 
-    // Endpoint tworzenia wiadomości z plikiem
     @PostMapping(value = "/with-file", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public Message addMessageWithFile(
             @RequestParam("author") String author,
@@ -73,11 +72,13 @@ public class MessageController {
             @RequestParam(value = "recipient", required = false) String recipient,
             @RequestParam("file") MultipartFile file
     ) throws IOException {
-        // Wyślij plik do S3 i pobierz URL:
-        String s3Url = s3Service.uploadFile(file);
+        // Wyślij plik do S3 i pobierz klucz (fileName)
+        String s3Key = s3Service.uploadFile(file);
         Message msg = new Message(author, content);
         msg.setRecipientUsername(recipient);
-        msg.setFile(s3Url);
+        // Zapisz klucz pliku, nie pełny URL
+        msg.setFile(s3Key);
         return messageRepository.save(msg);
     }
+
 }

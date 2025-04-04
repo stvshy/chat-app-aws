@@ -15,36 +15,36 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.net.URI;
 import java.nio.file.Files;
+import pl.projekt_chmury.backend.service.S3Service;
 
 @RestController
 @RequestMapping("/api/files")
 public class FileController {
 
     private final MessageRepository messageRepository;
+    private final S3Service s3Service;
 
-    public FileController(MessageRepository messageRepository) {
+    public FileController(MessageRepository messageRepository, S3Service s3Service) {
         this.messageRepository = messageRepository;
+        this.s3Service = s3Service;
     }
 
     // Endpoint do pobierania pliku na podstawie ID wiadomości
     @GetMapping("/download/{id}")
-    public ResponseEntity<Resource> downloadFile(@PathVariable Long id) throws IOException {
+    public ResponseEntity<?> downloadFile(@PathVariable Long id) {
         Message msg = messageRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Message not found"));
 
         if (msg.getFile() == null) {
-            throw new FileNotFoundException("Brak pliku w wiadomości.");
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body("Brak pliku w wiadomości.");
         }
 
-        // Tu pobierasz obiekt z S3:
-        // np. s3Client.getObject(GetObjectRequest.builder().bucket(bucketName).key(fileKey).build())
-        // i tworzysz ByteArrayResource, podobnie jak w Twoim obecnym kodzie.
+        // msg.getFile() zawiera teraz klucz pliku, np. "1672531234567-nazwa_pliku.jpg"
+        String presignedUrl = s3Service.generatePresignedUrl(msg.getFile());
 
-        // Dla uproszczenia: jeśli msg.getFile() = "https://bucket.s3.amazonaws.com/fileName"
-        // możesz zrobić redirect 302:
         return ResponseEntity.status(HttpStatus.FOUND)
-                .location(URI.create(msg.getFile()))
+                .location(URI.create(presignedUrl))
                 .build();
     }
-
 }
