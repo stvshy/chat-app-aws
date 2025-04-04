@@ -61,6 +61,7 @@ public class S3Service {
         GetObjectRequest getObjectRequest = GetObjectRequest.builder()
                 .bucket(bucketName)
                 .key(key)
+                .responseContentDisposition("attachment; filename=\"" + key + "\"")
                 .build();
 
         GetObjectPresignRequest presignRequest = GetObjectPresignRequest.builder()
