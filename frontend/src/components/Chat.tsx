@@ -7,19 +7,12 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface IMessage {
     id: number;
-    author: {
-        id: number;
-        username: string;
-        password: string;
-    };
-    recipient: {
-        id: number;
-        username: string;
-        password: string;
-    } | null;
+    authorUsername: string;
+    recipientUsername: string | null;
     content: string;
     file?: string | null;
 }
+
 
 interface ChatProps {
     token: string;
@@ -184,7 +177,7 @@ export default function Chat({ token, username }: ChatProps) {
                         <div className="message-list">
                             {receivedMessages.map((msg) => (
                                 <div key={msg.id} className="message-card">
-                                    <p><strong>{msg.author.username}</strong></p>
+                                    <p><strong>{msg.authorUsername}</strong></p>
                                     <p>{msg.content}</p>
                                     {msg.file && (
                                         <p>
@@ -215,7 +208,7 @@ export default function Chat({ token, username }: ChatProps) {
                                     <div className="message-list sent-message-list">
                                         {sentMessages.map((msg) => (
                                             <div key={msg.id} className="message-card sent-message-card">
-                                                <p><strong>{msg.recipient ? msg.recipient.username : "Broadcast"}</strong></p>
+                                                <p><strong>{msg.recipientUsername ? msg.recipientUsername : "Broadcast"}</strong></p>
                                                 <p>{msg.content}</p>
                                                 {msg.file && (
                                                     <p>

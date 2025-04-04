@@ -6,6 +6,7 @@ import org.springframework.web.bind.annotation.*;
 import pl.projekt_chmury.backend.model.User;
 import pl.projekt_chmury.backend.service.CognitoService;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.AdminInitiateAuthResponse;
+import software.amazon.awssdk.services.cognitoidentityprovider.model.InitiateAuthResponse;
 import software.amazon.awssdk.services.cognitoidentityprovider.model.SignUpResponse;
 
 import java.util.HashMap;
@@ -42,8 +43,7 @@ public class AuthController {
     @PostMapping("/login")
     public ResponseEntity<?> login(@RequestBody User loginData) {
         try {
-            // Logujemy użytkownika przez Cognito
-            AdminInitiateAuthResponse response = cognitoService.adminLogin(loginData.getUsername(), loginData.getPassword());
+            InitiateAuthResponse response = cognitoService.userLogin(loginData.getUsername(), loginData.getPassword());
             Map<String, String> tokens = new HashMap<>();
             tokens.put("idToken", response.authenticationResult().idToken());
             tokens.put("accessToken", response.authenticationResult().accessToken());
@@ -51,12 +51,9 @@ public class AuthController {
             tokens.put("tokenType", response.authenticationResult().tokenType());
             return ResponseEntity.ok(tokens);
         } catch (Exception e) {
-            // Wyświetlamy pełen stack trace w logach
             e.printStackTrace();
-
-            // Możesz tymczasowo zwrócić dodatkowe info do frontu:
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                    .body("Błąd logowania: " + e.getMessage() + "\nStackTrace: " + Arrays.toString(e.getStackTrace()));
+                    .body("Błąd logowania: " + e.getMessage());
         }
     }
 }

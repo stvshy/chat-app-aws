@@ -17,8 +17,9 @@ export default function Login({
         });
         if (res.ok) {
             const responseData = await res.json();
+            console.log("Response data:", responseData);
             // Zakładamy, że używamy accessToken do dalszych żądań
-            const token = responseData.idToken;
+            const token = responseData.accessToken;
             onLogin(token, username);
         } else {
             alert("Incorrect login credentials");

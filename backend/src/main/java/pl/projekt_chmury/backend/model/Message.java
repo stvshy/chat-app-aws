@@ -9,13 +9,12 @@ public class Message {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    // Zamiast relacji do User przechowujemy tylko nazwę użytkownika
+    // Przechowujemy tylko nazwę użytkownika
     private String authorUsername;
-
     private String recipientUsername; // może być null dla broadcastu
 
     private String content;
-    private String file;
+    private String file; // URL do pliku w S3
 
     public Message() {}
 

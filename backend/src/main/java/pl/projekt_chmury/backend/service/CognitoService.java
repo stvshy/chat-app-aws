@@ -23,7 +23,6 @@ public class CognitoService {
 
     // Rejestracja (Sign Up)
     public SignUpResponse signUp(String username, String password) {
-        // Tworzymy klienta v2
         try (CognitoIdentityProviderClient client = CognitoIdentityProviderClient.builder()
                 .region(Region.of(region))
                 .build()) {
@@ -34,37 +33,34 @@ public class CognitoService {
                     .password(password)
                     .build();
 
-            // Jeśli chcesz przesyłać dodatkowe atrybuty, np. email, zrób:
-            // signUpRequest = signUpRequest.toBuilder()
-            //     .userAttributes(
-            //         AttributeType.builder().name("email").value("example@example.com").build()
-            //     )
-            //     .build();
-
             return client.signUp(signUpRequest);
         }
     }
 
-    // Logowanie (Admin Initiate Auth)
-    // Wymaga włączenia ADMIN_NO_SRP_AUTH lub ADMIN_USER_PASSWORD_AUTH w App Client
-    public AdminInitiateAuthResponse adminLogin(String username, String password) {
+    // Logowanie przy użyciu flow USER_PASSWORD_AUTH
+    public InitiateAuthResponse userLogin(String username, String password) {
         try (CognitoIdentityProviderClient client = CognitoIdentityProviderClient.builder()
                 .region(Region.of(region))
                 .build()) {
 
-            // Tworzymy mapę parametrów logowania
             Map<String, String> authParams = new HashMap<>();
             authParams.put("USERNAME", username);
             authParams.put("PASSWORD", password);
 
-            AdminInitiateAuthRequest authRequest = AdminInitiateAuthRequest.builder()
-                    .userPoolId(userPoolId)
+            InitiateAuthRequest authRequest = InitiateAuthRequest.builder()
                     .clientId(clientId)
-                    .authFlow(AuthFlowType.ADMIN_NO_SRP_AUTH) // lub ADMIN_USER_PASSWORD_AUTH
+                    .authFlow(AuthFlowType.USER_PASSWORD_AUTH)
                     .authParameters(authParams)
                     .build();
 
-            return client.adminInitiateAuth(authRequest);
+            InitiateAuthResponse response = client.initiateAuth(authRequest);
+            System.out.println(">>> Cognito response: " + response);
+            System.out.println(">>> Access token: " + response.authenticationResult().accessToken());
+            System.out.println(">>> ID token: " + response.authenticationResult().idToken());
+
+            return client.initiateAuth(authRequest);
         }
     }
+
+    // Możesz zachować metodę adminLogin, jeśli potrzebujesz, ale do self sign-up i logowania używaj userLogin.
 }

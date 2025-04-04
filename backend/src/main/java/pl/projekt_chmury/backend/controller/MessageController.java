@@ -9,7 +9,7 @@ import org.springframework.web.multipart.MultipartFile;
 import pl.projekt_chmury.backend.model.Message;
 import pl.projekt_chmury.backend.repository.MessageRepository;
 import pl.projekt_chmury.backend.service.S3Service;
-
+import java.net.URI;
 import java.io.File;
 import java.io.IOException;
 import java.util.List;
