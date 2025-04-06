@@ -26,6 +26,9 @@ resource "aws_db_instance" "mydb" {
   parameter_group_name = "default.postgres14"
   skip_final_snapshot  = true
   publicly_accessible = true
+
+  # Włącz eksport logów do CloudWatch
+  enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 }
 
 output "db_endpoint" {
@@ -39,18 +42,18 @@ resource "aws_s3_bucket" "upload_bucket" {
   bucket = "terraform-projekt-chmury-uploads-${random_string.suffix.result}"
 }
 
-# Przesyłanie plików do S3 (upewnij się, że ścieżki są poprawne)
+# Przesyłanie plików do S3
 resource "aws_s3_object" "backend_app_zip" {
   bucket = aws_s3_bucket.upload_bucket.bucket
   key    = "backend-app.zip"
-  source = "../backend/backend-app.zip"  # Dopasuj ścieżkę do pliku
+  source = "../backend/backend-app.zip"
   etag   = filemd5("../backend/backend-app.zip")
 }
 
 resource "aws_s3_object" "frontend_app_zip" {
   bucket = aws_s3_bucket.upload_bucket.bucket
   key    = "frontend-app.zip"
-  source = "../frontend/frontend-app.zip"  # Dopasuj ścieżkę do pliku
+  source = "../frontend/frontend-app.zip"
   etag   = filemd5("../frontend/frontend-app.zip")
 }
 
@@ -152,7 +155,22 @@ resource "aws_elastic_beanstalk_environment" "backend_env" {
     name      = "aws.cognito.clientId"
     value     = aws_cognito_user_pool_client.chat_pool_client.id
   }
-
+  # Ustawienia log streamingu do CloudWatch
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "StreamLogs"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "DeleteOnTerminate"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "7"
+  }
   wait_for_ready_timeout = "30m"
 }
 
@@ -191,7 +209,22 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
     name      = "IamInstanceProfile"
     value     = "LabInstanceProfile"
   }
-
+  # Ustawienia log streamingu do CloudWatch
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "StreamLogs"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "DeleteOnTerminate"
+    value     = "true"
+  }
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "7"
+  }
   wait_for_ready_timeout = "30m"
 }
 
