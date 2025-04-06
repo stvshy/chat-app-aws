@@ -67,6 +67,19 @@ resource "aws_cloudwatch_log_group" "app_logs" {
 ###########################
 resource "aws_cognito_user_pool" "chat_pool" {
   name = "terraform-projekt-chmury-user-pool-${random_string.suffix.result}"
+
+  # Polityka haseł:
+  password_policy {
+    minimum_length    = 6
+    require_lowercase = true
+    require_numbers   = true
+    require_symbols   = false
+    require_uppercase = true
+    temporary_password_validity_days = 7
+  }
+
+  # np. automatycznie weryfikuj email:
+  auto_verified_attributes = ["email"]
 }
 
 resource "aws_cognito_user_pool_client" "chat_pool_client" {
@@ -197,6 +210,60 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
 
   wait_for_ready_timeout = "30m"
 }
+
+resource "aws_lambda_function" "auto_confirm_user" {
+  function_name = "auto-confirm-user"
+  runtime       = "python3.9"
+  handler       = "lambda_function.lambda_handler"
+  role          = aws_iam_role.lambda_cognito_triggers.arn
+
+  # Plik zip z kodem Lambdy (np. w folderze lambda/)
+  filename         = "${path.module}/lambda/auto_confirm_user.zip"
+  source_code_hash = filebase64sha256("${path.module}/lambda/auto_confirm_user.zip")
+}
+
+resource "aws_iam_role" "lambda_cognito_triggers" {
+  name               = "lambda_cognito_triggers"
+  assume_role_policy = data.aws_iam_policy_document.lambda_assume_role_policy.json
+}
+
+data "aws_iam_policy_document" "lambda_assume_role_policy" {
+  statement {
+    actions = ["sts:AssumeRole"]
+    principals {
+      type        = "Service"
+      identifiers = ["lambda.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_basic_execution" {
+  role       = aws_iam_role.lambda_cognito_triggers.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# Sam user pool:
+resource "aws_cognito_user_pool" "chat_pool" {
+  name = "terraform-projekt-chmury-user-pool-${random_string.suffix.result}"
+
+  # Podłączamy naszą Lambdę w lambda_config
+  lambda_config {
+    pre_sign_up = aws_lambda_function.auto_confirm_user.arn
+  }
+
+  # Polityka haseł
+  password_policy {
+    minimum_length    = 6
+    require_lowercase = true
+    require_numbers   = false
+    require_symbols   = false
+    require_uppercase = false
+    temporary_password_validity_days = 7
+  }
+
+  auto_verified_attributes = ["email"]
+}
+
 
 ###########################
 # Outputs
