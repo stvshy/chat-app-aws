@@ -65,22 +65,6 @@ resource "aws_cloudwatch_log_group" "app_logs" {
 ###########################
 # Cognito — User Pool and Client
 ###########################
-resource "aws_cognito_user_pool" "chat_pool" {
-  name = "terraform-projekt-chmury-user-pool-${random_string.suffix.result}"
-
-  # Polityka haseł:
-  password_policy {
-    minimum_length    = 6
-    require_lowercase = true
-    require_numbers   = true
-    require_symbols   = false
-    require_uppercase = true
-    temporary_password_validity_days = 7
-  }
-
-  # np. automatycznie weryfikuj email:
-  auto_verified_attributes = ["email"]
-}
 
 resource "aws_cognito_user_pool_client" "chat_pool_client" {
   name         = "terraform-projekt-chmury-client-${random_string.suffix.result}"
@@ -211,6 +195,11 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
   wait_for_ready_timeout = "30m"
 }
 
+
+#########################################
+#  Lambda function for Cognito triggers
+#########################################
+
 resource "aws_lambda_function" "auto_confirm_user" {
   function_name = "auto-confirm-user"
   runtime       = "python3.9"
@@ -255,9 +244,9 @@ resource "aws_cognito_user_pool" "chat_pool" {
   password_policy {
     minimum_length    = 6
     require_lowercase = true
-    require_numbers   = false
+    require_numbers   = true
     require_symbols   = false
-    require_uppercase = false
+    require_uppercase = true
     temporary_password_validity_days = 7
   }
 
