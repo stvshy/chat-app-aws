@@ -1,17 +1,20 @@
-FROM node:20-alpine
-
+# Etap 1: Budowanie aplikacji
+FROM node:20-alpine AS builder
 WORKDIR /app
 
-# kopiujemy TYLKO package.json, BEZ package-lock.json
-COPY package.json ./
-
-# instalujemy zależności
+# Kopiujemy pliki konfiguracyjne i instalujemy zależności
+COPY package*.json ./
 RUN npm install
 
-# kopiujemy resztę plików (kod i ewentualny package-lock, jeśli jednak chcesz)
+# Kopiujemy resztę plików i budujemy aplikację (produkcja)
 COPY . .
+RUN npm run build
+# Zakładamy, że wynik budowania trafia do katalogu "dist"
 
-ENV PORT=5173
-EXPOSE 5173
-
-CMD ["npm", "run", "dev", "--", "--host", "0.0.0.0", "--port", "5173"]
+# Etap 2: Serwowanie statycznych plików za pomocą serve
+FROM node:20-alpine
+RUN npm install -g serve
+COPY --from=builder /app/dist /app/dist
+ENV PORT=3000
+EXPOSE 3000
+CMD ["serve", "-s", "/app/dist", "-l", "3000"]

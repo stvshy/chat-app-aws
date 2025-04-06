@@ -17,7 +17,6 @@ export default function Register() {
         setPassword("");
     };
 
-
     return (
         <div className="card register-card">
             <h2>Create an account</h2>

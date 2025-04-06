@@ -10,6 +10,9 @@ export default defineConfig({
     }
   },
   server: {
-    allowedHosts: ['projektchmury-frontend.us-east-1.elasticbeanstalk.com']
+    allowedHosts: [
+      'projektchmury-frontend.us-east-1.elasticbeanstalk.com',
+      'terraform-frontend-env-rp9w.eba-k6cte6nq.us-east-1.elasticbeanstalk.com'
+    ]
   }
 })

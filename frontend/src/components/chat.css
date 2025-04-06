@@ -251,8 +251,6 @@ h3.collapsible-header.sent-header {
     overflow-y: auto;
 }
 
-/* 2. Upewnij się, że pojedyncze karty wiadomości mają naturalną wysokość,
-   a jedynie ich zawartość (lista) przewija się */
 .message-card {
     /* Nie narzucamy stałej wysokości – karty mogą się wydłużać w pionie */
     width: 100%;  /* utrzymujemy stałą szerokość, dostosowaną do kontenera */
