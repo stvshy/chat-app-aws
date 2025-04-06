@@ -95,7 +95,7 @@ resource "aws_elastic_beanstalk_application" "backend_app" {
 }
 
 resource "aws_elastic_beanstalk_application_version" "backend_app_version" {
-  name        = "terraform-backend-app-v1-${random_string.suffix.result}"
+  name        = "terraform-backend-app-v1-${filemd5("../backend/backend-app.zip")}"
   application = aws_elastic_beanstalk_application.backend_app.name
   bucket      = aws_s3_bucket.upload_bucket.bucket
   key         = aws_s3_object.backend_app_zip.key
@@ -168,12 +168,13 @@ resource "aws_elastic_beanstalk_application" "frontend_app" {
 }
 
 resource "aws_elastic_beanstalk_application_version" "frontend_app_version" {
-  name        = "terraform-frontend-app-v1-${random_string.suffix.result}"
+  name        = "terraform-frontend-app-v1-${filemd5("../frontend/frontend-app.zip")}"
   application = aws_elastic_beanstalk_application.frontend_app.name
   bucket      = aws_s3_bucket.upload_bucket.bucket
   key         = aws_s3_object.frontend_app_zip.key
   description = "Frontend application version 1"
 }
+
 
 resource "aws_elastic_beanstalk_environment" "frontend_env" {
   name                = "terraform-frontend-env-${random_string.suffix.result}"
