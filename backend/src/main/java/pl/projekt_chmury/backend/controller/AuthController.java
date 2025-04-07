@@ -33,8 +33,6 @@ public class AuthController {
             // Wyświetlamy pełen stack trace w logach
             e.printStackTrace();
 
-            // Dla debugowania możesz zwrócić też np. e.getMessage() i stack trace do frontu:
-            // NIE zalecane w produkcji, ale przydatne w fazie testów
             return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                     .body("Błąd rejestracji: " + e.getMessage() + "\nStackTrace: " + Arrays.toString(e.getStackTrace()));
         }

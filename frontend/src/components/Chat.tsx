@@ -239,7 +239,6 @@ export default function Chat({ token, username }: ChatProps) {
                         </button>
                     )}
                 </div>
-
             </div>
         </div>
     );

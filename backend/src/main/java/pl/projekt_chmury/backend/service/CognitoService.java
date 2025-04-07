@@ -61,6 +61,4 @@ public class CognitoService {
             return client.initiateAuth(authRequest);
         }
     }
-
-    // Możesz zachować metodę adminLogin, jeśli potrzebujesz, ale do self sign-up i logowania używaj userLogin.
 }
