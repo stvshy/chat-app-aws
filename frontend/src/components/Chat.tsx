@@ -5,14 +5,14 @@ import { FiArrowRight, FiChevronDown } from "react-icons/fi";
 import { FiChevronUp } from "react-icons/fi";
 import { motion, AnimatePresence } from "framer-motion";
 
+// Zaktualizowany interfejs - używamy fileId
 interface IMessage {
     id: number;
     authorUsername: string;
     recipientUsername: string | null;
     content: string;
-    file?: string | null;
+    fileId?: string | null; // Zmieniono z file na fileId
 }
-
 
 interface ChatProps {
     token: string;
@@ -22,101 +22,152 @@ interface ChatProps {
 export default function Chat({ token, username }: ChatProps) {
     const [sentMessages, setSentMessages] = useState<IMessage[]>([]);
     const [receivedMessages, setReceivedMessages] = useState<IMessage[]>([]);
-
-    // Send form states
     const [recipient, setRecipient] = useState("");
     const [content, setContent] = useState("");
     const [file, setFile] = useState<File | null>(null);
-
-    // Controls expansion of sent messages panel
     const [showSent, setShowSent] = useState(false);
-    const apiUrl = import.meta.env.VITE_API_URL;
+
+    // Pobierz URL-e do poszczególnych serwisów
+    const chatApiUrl = import.meta.env.VITE_CHAT_API_URL;
+    const fileApiUrl = import.meta.env.VITE_FILE_API_URL;
+
     console.log("Token przekazywany do fetch:", token);
+    console.log("Chat API URL:", chatApiUrl);
+    console.log("File API URL:", fileApiUrl);
 
     const fetchSentMessages = async () => {
+        if (!chatApiUrl) return; // Sprawdź czy URL jest dostępny
         try {
-            const res = await fetch(`http://${apiUrl}/api/messages/sent?username=${username}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Użyj chatApiUrl
+            const res = await fetch(
+                `${chatApiUrl}/messages/sent?username=${username}`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                },
+            );
             if (res.ok) {
                 let data = await res.json();
-                // Sort messages: newest first
                 data.sort((a: IMessage, b: IMessage) => b.id - a.id);
                 setSentMessages(data);
             } else {
-                console.error("Error fetching sent messages");
+                console.error("Error fetching sent messages:", res.statusText);
             }
         } catch (error) {
-            console.error("Error:", error);
+            console.error("Error fetching sent messages:", error);
         }
     };
 
     const fetchReceivedMessages = async () => {
+        if (!chatApiUrl) return; // Sprawdź czy URL jest dostępny
         try {
-            const res = await fetch(`http://${apiUrl}/api/messages/received?username=${username}`, {
-                headers: { Authorization: `Bearer ${token}` }
-            });
+            // Użyj chatApiUrl
+            const res = await fetch(
+                `${chatApiUrl}/messages/received?username=${username}`,
+                {
+                    headers: { Authorization: `Bearer ${token}` },
+                },
+            );
             if (res.ok) {
                 let data = await res.json();
                 data.sort((a: IMessage, b: IMessage) => b.id - a.id);
                 setReceivedMessages(data);
             } else {
-                console.error("Error fetching received messages");
+                console.error(
+                    "Error fetching received messages:",
+                    res.statusText,
+                );
             }
         } catch (error) {
-            console.error("Error:", error);
+            console.error("Error fetching received messages:", error);
         }
     };
 
     useEffect(() => {
         fetchSentMessages();
         fetchReceivedMessages();
-    }, []);
+        // Dodaj chatApiUrl jako zależność, aby odświeżyć, gdyby się zmienił (choć to rzadkie)
+    }, [chatApiUrl, username, token]);
 
     const sendMessage = async () => {
+        // Sprawdź dostępność URL-i
+        if (!chatApiUrl || !fileApiUrl) {
+            alert("API URLs are not configured!");
+            return;
+        }
+
+        let fileIdentifier: string | null = null;
+
         try {
+            // Krok 1: Jeśli jest plik, wyślij go do file-service
             if (file) {
-                const formData = new FormData();
-                formData.append("author", username);
-                formData.append("content", content);
-                formData.append("recipient", recipient);
-                formData.append("file", file);
-                const res = await fetch(`http://${apiUrl}/api/messages/with-file`, {
+                const fileFormData = new FormData();
+                fileFormData.append("file", file);
+                // file-service /upload oczekuje teraz nazwy użytkownika w parametrze
+                // fileFormData.append("username", username); // Można też pobrać z tokenu w backendzie
+
+                const fileRes = await fetch(`${fileApiUrl}/files/upload`, {
                     method: "POST",
-                    headers: { Authorization: `Bearer ${token}` },
-                    body: formData,
+                    headers: {
+                        // Content-Type jest ustawiany automatycznie przez przeglądarkę dla FormData
+                        Authorization: `Bearer ${token}`,
+                    },
+                    body: fileFormData,
                 });
-                if (res.ok) {
-                    alert("Message with file sent successfully!");
-                    fetchSentMessages();
-                    fetchReceivedMessages();
-                    setRecipient("");
-                    setContent("");
-                    setFile(null);
+
+                if (fileRes.ok) {
+                    const fileData = await fileRes.json();
+                    fileIdentifier = fileData.fileId; // Odczytaj fileId z odpowiedzi file-service
+                    if (!fileIdentifier) {
+                        throw new Error("fileId not found in file service response");
+                    }
+                    console.log("File uploaded successfully, fileId:", fileIdentifier);
                 } else {
-                    const text = await res.text();
-                    alert("Error sending message: " + text);
-                }
-            } else {
-                const body = { author: username, content, recipient };
-                const res = await fetch(`http://${apiUrl}/api/messages`, {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-                    body: JSON.stringify(body),
-                });
-                if (res.ok) {
-                    alert("Message sent successfully!");
-                    fetchSentMessages();
-                    fetchReceivedMessages();
-                    setRecipient("");
-                    setContent("");
-                } else {
-                    const text = await res.text();
-                    alert("Error sending message: " + text);
+                    const errorText = await fileRes.text();
+                    console.error("Error uploading file:", errorText);
+                    alert("Error uploading file: " + errorText);
+                    return; // Przerwij wysyłanie wiadomości, jeśli upload pliku się nie powiódł
                 }
             }
+
+            // Krok 2: Wyślij wiadomość (z fileId lub bez) do chat-service
+            const messageBody: {
+                author: string;
+                content: string;
+                recipient: string;
+                fileId?: string | null; // Zmieniono klucz z 'file' na 'fileId'
+            } = {
+                author: username,
+                content,
+                recipient,
+            };
+            if (fileIdentifier) {
+                messageBody.fileId = fileIdentifier; // Dodaj fileId, jeśli istnieje
+            }
+
+            const msgRes = await fetch(`${chatApiUrl}/messages`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${token}`,
+                },
+                body: JSON.stringify(messageBody),
+            });
+
+            if (msgRes.ok) {
+                alert("Message sent successfully!");
+                // Odśwież wiadomości i wyczyść formularz
+                fetchSentMessages();
+                fetchReceivedMessages();
+                setRecipient("");
+                setContent("");
+                setFile(null); // Wyczyść wybrany plik
+            } else {
+                const errorText = await msgRes.text();
+                console.error("Error sending message:", errorText);
+                alert("Error sending message: " + errorText);
+            }
         } catch (error) {
-            console.error("Error sending message:", error);
+            console.error("Error sending message or file:", error);
             alert("Error sending message!");
         }
     };
@@ -127,7 +178,6 @@ export default function Chat({ token, username }: ChatProps) {
 
     return (
         <div className="chat-container">
-            {/* Left panel: Send message */}
             <div className="chat-left">
                 <h2>Welcome, {username}!</h2>
                 <div className="send-box">
@@ -148,28 +198,34 @@ export default function Chat({ token, username }: ChatProps) {
                     <label>Attach file (optional)</label>
                     <div className="file-input-wrapper">
                         <label htmlFor="file-input" className="file-label">
-                            {file ? file.name : (<span>No file selected< FiPlus/></span>)}
+                            {file ? (
+                                file.name
+                            ) : (
+                                <span>
+                                    No file selected
+                                    <FiPlus />
+                                </span>
+                            )}
                         </label>
                         <input
                             type="file"
                             id="file-input"
                             className="file-input"
                             onChange={(e) =>
-                                setFile(e.target.files ? e.target.files[0] : null)
+                                setFile(
+                                    e.target.files ? e.target.files[0] : null,
+                                )
                             }
                         />
                     </div>
-
                     <div className="send-button-container">
                         <button className="send-button" onClick={sendMessage}>
                             Send <FiArrowRight className="send-arrow" />
                         </button>
                     </div>
-
                 </div>
             </div>
 
-            {/* Right panel: Received & Sent messages */}
             <div className="chat-right">
                 <div className="messages-wrapper">
                     <div className="received-section">
@@ -177,12 +233,15 @@ export default function Chat({ token, username }: ChatProps) {
                         <div className="message-list">
                             {receivedMessages.map((msg) => (
                                 <div key={msg.id} className="message-card">
-                                    <p><strong>{msg.authorUsername}</strong></p>
+                                    <p>
+                                        <strong>{msg.authorUsername}</strong>
+                                    </p>
                                     <p>{msg.content}</p>
-                                    {msg.file && (
+                                    {/* Użyj fileId do wygenerowania linku do file-service */}
+                                    {msg.fileId && fileApiUrl && (
                                         <p>
                                             <a
-                                                href={`http://${apiUrl}/api/files/download/${msg.id}`}
+                                                href={`${fileApiUrl}/files/download/${msg.fileId}`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                             >
@@ -198,30 +257,46 @@ export default function Chat({ token, username }: ChatProps) {
                     <AnimatePresence>
                         {showSent && (
                             <motion.div
-                                initial={{ y: '100%', opacity: 0 }}
+                                initial={{ y: "100%", opacity: 0 }}
                                 animate={{ y: 0, opacity: 1 }}
-                                exit={{ y: '100%', opacity: 0 }}
+                                exit={{ y: "100%", opacity: 0 }}
                                 transition={{ duration: 0.35 }}
                                 className="sent-section-wrapper"
                             >
                                 <div className="sent-panel">
-                                    <div className="sent-header" onClick={toggleSent}>
+                                    <div
+                                        className="sent-header"
+                                        onClick={toggleSent}
+                                    >
                                         <span>Sent Messages</span>
-                                        <FiChevronDown className="sent-icon down" size={14} />
+                                        <FiChevronDown
+                                            className="sent-icon down"
+                                            size={14}
+                                        />
                                     </div>
                                     <div className="message-list sent-message-list">
                                         {sentMessages.map((msg) => (
-                                            <div key={msg.id} className="message-card sent-message-card">
-                                                <p><strong>{msg.recipientUsername ? msg.recipientUsername : "Broadcast"}</strong></p>
+                                            <div
+                                                key={msg.id}
+                                                className="message-card sent-message-card"
+                                            >
+                                                <p>
+                                                    <strong>
+                                                        {msg.recipientUsername
+                                                            ? msg.recipientUsername
+                                                            : "Broadcast"}
+                                                    </strong>
+                                                </p>
                                                 <p>{msg.content}</p>
-                                                {msg.file && (
+                                                {/* Użyj fileId do wygenerowania linku do file-service */}
+                                                {msg.fileId && fileApiUrl && (
                                                     <p>
                                                         <a
-                                                            href={`http://${apiUrl}/api/files/download/${msg.id}`}
+                                                            href={`${fileApiUrl}/files/download/${msg.fileId}`}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                         >
-                                                        Download file
+                                                            Download file
                                                         </a>
                                                     </p>
                                                 )}
@@ -234,8 +309,14 @@ export default function Chat({ token, username }: ChatProps) {
                     </AnimatePresence>
 
                     {!showSent && (
-                        <button onClick={toggleSent} className="sent-toggle-button">
-                            <span>Sent Messages <FiChevronUp className="sent-icon up" size={14} /></span>
+                        <button
+                            onClick={toggleSent}
+                            className="sent-toggle-button"
+                        >
+                            <span>
+                                Sent Messages{" "}
+                                <FiChevronUp className="sent-icon up" size={14} />
+                            </span>
                         </button>
                     )}
                 </div>

@@ -1,35 +1,105 @@
 version: '3.8'
 
 services:
-
-  postgres_container:
+  postgres_chat_db:
     image: postgres:latest
-    container_name: postgres_container
+    container_name: postgres_chat_db_container
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: admin
-      POSTGRES_DB: mydatabase
+      POSTGRES_DB: chat_service_db
       POSTGRES_HOST_AUTH_METHOD: trust
     ports:
       - "5432:5432"
     networks:
       - projektchmury-network
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-chat-data:/var/lib/postgresql/data
 
-  backend-container:
-    build: ./backend
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    container_name: dynamodb_local_container
     ports:
-      - "8081:8080"
-    depends_on:
-      - postgres_container
-    environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres_container:5432/mydatabase
-      SPRING_DATASOURCE_USERNAME: admin
-      SPRING_DATASOURCE_PASSWORD: admin
+      - "8000:8000"
     networks:
       - projektchmury-network
-    container_name: backend_container
+    command: "-jar DynamoDBLocal.jar -sharedDb -dbPath /data"
+    volumes:
+      - dynamodb-data:/data
+
+  auth-service:
+    build:
+      context: ./auth-service
+    container_name: auth_service_container
+    ports:
+      - "8081:8081"
+    environment:
+      - AWS_COGNITO_REGION=${AWS_COGNITO_REGION}
+      - AWS_COGNITO_USER_POOL_ID=${AWS_COGNITO_USER_POOL_ID}
+      - AWS_COGNITO_CLIENT_ID=${AWS_COGNITO_CLIENT_ID}
+    networks:
+      - projektchmury-network
+
+  chat-service:
+    build:
+      context: ./chat-service
+    container_name: chat_service_container
+    ports:
+      - "8082:8082"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres_chat_db:5432/chat_service_db
+      - SPRING_DATASOURCE_USERNAME=admin
+      - SPRING_DATASOURCE_PASSWORD=admin
+      - AWS_COGNITO_REGION=${AWS_COGNITO_REGION}
+      - AWS_COGNITO_USER_POOL_ID=${AWS_COGNITO_USER_POOL_ID}
+      - AWS_COGNITO_CLIENT_ID=${AWS_COGNITO_CLIENT_ID}
+    networks:
+      - projektchmury-network
+    depends_on:
+      - postgres_chat_db
+
+  file-service:
+    build:
+      context: ./file-service
+    container_name: file_service_container
+    ports:
+      - "8083:8083"
+    environment:
+      - AWS_REGION=${AWS_REGION}
+      - AWS_S3_BUCKET_NAME=${AWS_S3_BUCKET_NAME}
+      - AWS_DYNAMODB_TABLE_NAME_FILE_METADATA=${AWS_DYNAMODB_TABLE_NAME_FILE_METADATA}
+      - AWS_DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - AWS_COGNITO_REGION=${AWS_COGNITO_REGION}
+      - AWS_COGNITO_USER_POOL_ID=${AWS_COGNITO_USER_POOL_ID}
+      - AWS_COGNITO_CLIENT_ID=${AWS_COGNITO_CLIENT_ID}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+    networks:
+      - projektchmury-network
+    depends_on:
+      - dynamodb-local
+
+  notification-service:
+    build:
+      context: ./notification-service
+    container_name: notification_service_container
+    ports:
+      - "8084:8084"
+    environment:
+      - AWS_REGION=${AWS_REGION}
+      - AWS_SNS_TOPIC_ARN=${AWS_SNS_TOPIC_ARN}
+      - AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY=${AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY}
+      - AWS_DYNAMODB_ENDPOINT=http://dynamodb-local:8000
+      - AWS_COGNITO_REGION=${AWS_COGNITO_REGION}
+      - AWS_COGNITO_USER_POOL_ID=${AWS_COGNITO_USER_POOL_ID}
+      - AWS_COGNITO_CLIENT_ID=${AWS_COGNITO_CLIENT_ID}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      # - AWS_SNS_ENDPOINT=http://localstack:4566 # Jeśli używasz LocalStack dla SNS
+    networks:
+      - projektchmury-network
+    depends_on:
+      - dynamodb-local # Zależy od lokalnego DynamoDB
 
   frontend-container:
     build: ./frontend
@@ -38,9 +108,21 @@ services:
     networks:
       - projektchmury-network
     container_name: frontend_container
+    environment:
+      - VITE_AUTH_API_URL=http://auth-service:8081/api/auth
+      - VITE_CHAT_API_URL=http://chat-service:8082/api
+      - VITE_FILE_API_URL=http://file-service:8083/api
+      - VITE_NOTIFICATION_API_URL=http://notification-service:8084/api # Dodajemy URL do notification-service
+    depends_on:
+      - auth-service
+      - chat-service
+      - file-service
+      - notification-service
+
 networks:
   projektchmury-network:
     driver: bridge
 
 volumes:
-  postgres-data:
+  postgres-chat-data:
+  dynamodb-data:

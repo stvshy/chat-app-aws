@@ -42,3 +42,5 @@ terraform/.terraform.lock.hcl
 ~$*.docx
 
 # Jeśli masz dodatkowe pliki dokumentacyjne, które nie chcesz wersjonować, dodaj je tutaj
+/repomix-output.xml
+.env

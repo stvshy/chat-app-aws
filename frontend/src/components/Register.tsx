@@ -4,17 +4,36 @@ import "./auth.css";
 export default function Register() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const apiUrl = import.meta.env.VITE_API_URL;
+    // Użyj nowej zmiennej środowiskowej dla API autoryzacji
+    const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
+
     const handleRegister = async () => {
-        const res = await fetch(`http://${apiUrl}/api/auth/register`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password }),
-        });
-        const text = await res.text();
-        alert(res.ok ? "Your account has been created!" : "Registration error:" + text);
-        setUsername("");
-        setPassword("");
+        // Sprawdź, czy URL jest zdefiniowany
+        if (!authApiUrl) {
+            alert("Auth API URL is not configured!");
+            return;
+        }
+        try {
+            // Użyj authApiUrl zamiast starego apiUrl/api/auth/register
+            const res = await fetch(`${authApiUrl}/register`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+            });
+            const text = await res.text();
+            alert(
+                res.ok
+                    ? "Your account has been created!"
+                    : "Registration error:" + text,
+            );
+            if (res.ok) {
+                setUsername("");
+                setPassword("");
+            }
+        } catch (error) {
+            console.error("Register error:", error);
+            alert("Error during registration.");
+        }
     };
 
     return (

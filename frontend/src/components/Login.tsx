@@ -8,21 +8,33 @@ export default function Login({
 }) {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const apiUrl = import.meta.env.VITE_API_URL;
+    // Użyj nowej zmiennej środowiskowej dla API autoryzacji
+    const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
+
     const handleLogin = async () => {
-        const res = await fetch(`http://${apiUrl}/api/auth/login`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ username, password }),
-        });
-        if (res.ok) {
-            const responseData = await res.json();
-            console.log("Response data:", responseData);
-            // Zakładamy, że używamy accessToken do dalszych żądań
-            const token = responseData.accessToken;
-            onLogin(token, username);
-        } else {
-            alert("Incorrect login credentials");
+        // Sprawdź, czy URL jest zdefiniowany
+        if (!authApiUrl) {
+            alert("Auth API URL is not configured!");
+            return;
+        }
+        try {
+            // Użyj authApiUrl zamiast starego apiUrl/api/auth/login
+            const res = await fetch(`${authApiUrl}/login`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ username, password }),
+            });
+            if (res.ok) {
+                const responseData = await res.json();
+                console.log("Response data:", responseData);
+                const token = responseData.accessToken;
+                onLogin(token, username);
+            } else {
+                alert("Incorrect login credentials");
+            }
+        } catch (error) {
+            console.error("Login error:", error);
+            alert("Error during login.");
         }
     };
 

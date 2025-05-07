@@ -16,6 +16,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 
 @RestController
 @RequestMapping("/api")
+
 public class UserController {
 
     private final UserRepository userRepository;
