@@ -5,7 +5,7 @@ provider "aws" {
 variable "auth_service_image_tag" {
   description = "Docker image tag for auth-service"
   type        = string
-  default     = "v1.0.0"
+  default     = "v1.0.1"
 }
 variable "chat_service_image_tag" {
   description = "Docker image tag for chat-service"
@@ -25,7 +25,7 @@ variable "notification_service_image_tag" {
 variable "frontend_image_tag" {
   description = "Docker image tag for frontend"
   type        = string
-  default     = "v1.0.0"
+  default     = "v1.0.1"
 }
 
 resource "random_string" "suffix" {
@@ -33,6 +33,8 @@ resource "random_string" "suffix" {
   special = false
   upper   = false
 }
+
+# W pliku: terraform/main.tf
 
 locals {
   project_name_prefix = "projekt-chmury-v2"
@@ -50,32 +52,39 @@ locals {
   notification_service_name = "notification-service"
   frontend_name             = "frontend"
 
+  # =====================================================================================
+  # SEKCJA, KTÓRĄ MODYFIKUJEMY: locals.fargate_services
+  # Dodajemy nową zmienną środowiskową "APP_CORS_ALLOWED_ORIGIN_FRONTEND"
+  # do każdego serwisu backendowego.
+  # =====================================================================================
   fargate_services = {
     (local.auth_service_name) = {
       port               = 8081
-      ecr_repo_url       = "${aws_ecr_repository.auth_service_repo.repository_url}:${var.auth_service_image_tag}"
+      ecr_repo_base_url  = aws_ecr_repository.auth_service_repo.repository_url
+      image_tag          = var.auth_service_image_tag
       log_group_name     = aws_cloudwatch_log_group.auth_service_logs.name
       target_group_arn   = aws_lb_target_group.auth_tg.arn
-      # listener_rule_ref  = aws_lb_listener_rule.auth_rule # USUNIĘTE
       environment_vars   = [
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
-        { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name }
+        { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name },
+        # --- POCZĄTEK ZMIANY dla auth-service ---
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        # --- KONIEC ZMIANY dla auth-service ---
       ]
-      # Flagi zależności
       depends_on_db      = false
-      depends_on_s3_ddb  = false # auth-service może używać ddb dla profili
+      depends_on_s3_ddb  = false
       depends_on_sns_ddb = false
     },
     (local.chat_service_name) = {
       port               = 8082
-      ecr_repo_url       = "${aws_ecr_repository.chat_service_repo.repository_url}:${var.chat_service_image_tag}"
+      ecr_repo_base_url  = aws_ecr_repository.chat_service_repo.repository_url
+      image_tag          = var.chat_service_image_tag
       log_group_name     = aws_cloudwatch_log_group.chat_service_logs.name
       target_group_arn   = aws_lb_target_group.chat_tg.arn
-      # listener_rule_ref  = aws_lb_listener_rule.chat_rule # USUNIĘTE
       environment_vars   = [
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
@@ -84,7 +93,10 @@ locals {
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
         { name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.chat_db.address}:${aws_db_instance.chat_db.port}/${aws_db_instance.chat_db.db_name}" },
         { name = "SPRING_DATASOURCE_USERNAME", value = aws_db_instance.chat_db.username },
-        { name = "SPRING_DATASOURCE_PASSWORD", value = aws_db_instance.chat_db.password }
+        { name = "SPRING_DATASOURCE_PASSWORD", value = aws_db_instance.chat_db.password },
+        # --- POCZĄTEK ZMIANY dla chat-service ---
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        # --- KONIEC ZMIANY dla chat-service ---
       ]
       depends_on_db      = true
       depends_on_s3_ddb  = false
@@ -92,10 +104,10 @@ locals {
     },
     (local.file_service_name) = {
       port               = 8083
-      ecr_repo_url       = "${aws_ecr_repository.file_service_repo.repository_url}:${var.file_service_image_tag}"
+      ecr_repo_base_url  = aws_ecr_repository.file_service_repo.repository_url
+      image_tag          = var.file_service_image_tag
       log_group_name     = aws_cloudwatch_log_group.file_service_logs.name
       target_group_arn   = aws_lb_target_group.file_tg.arn
-      # listener_rule_ref  = aws_lb_listener_rule.file_rule # USUNIĘTE
       environment_vars   = [
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
@@ -103,7 +115,10 @@ locals {
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
         { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.upload_bucket.bucket },
-        { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name }
+        { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name },
+        # --- POCZĄTEK ZMIANY dla file-service ---
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        # --- KONIEC ZMIANY dla file-service ---
       ]
       depends_on_db      = false
       depends_on_s3_ddb  = true
@@ -111,10 +126,10 @@ locals {
     },
     (local.notification_service_name) = {
       port               = 8084
-      ecr_repo_url       = "${aws_ecr_repository.notification_service_repo.repository_url}:${var.notification_service_image_tag}", // <-- DODAJ PRZECINEK
-      log_group_name     = aws_cloudwatch_log_group.notification_service_logs.name, // <-- DODAJ PRZECINEK (dobra praktyka)
-      target_group_arn   = aws_lb_target_group.notification_tg.arn, // <-- DODAJ PRZECINEK (dobra praktyka)
-      # listener_rule_ref  = aws_lb_listener_rule.notification_rule # USUNIĘTE
+      ecr_repo_base_url  = aws_ecr_repository.notification_service_repo.repository_url
+      image_tag          = var.notification_service_image_tag
+      log_group_name     = aws_cloudwatch_log_group.notification_service_logs.name
+      target_group_arn   = aws_lb_target_group.notification_tg.arn
       environment_vars   = [
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
@@ -122,7 +137,10 @@ locals {
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
         { name = "AWS_SNS_TOPIC_ARN", value = aws_sns_topic.notifications_topic.arn },
-        { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name }
+        { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name },
+        # --- POCZĄTEK ZMIANY dla notification-service ---
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        # --- KONIEC ZMIANY dla notification-service ---
       ]
       depends_on_db      = false
       depends_on_s3_ddb  = false
@@ -130,6 +148,7 @@ locals {
     }
   }
 }
+
 
 data "aws_vpc" "default" {
   default = true
@@ -221,22 +240,27 @@ resource "aws_security_group" "rds_sg" {
 resource "aws_ecr_repository" "auth_service_repo" {
   name = "${local.project_name_prefix}/${local.auth_service_name}"
   tags = local.common_tags
+  force_delete = true
 }
 resource "aws_ecr_repository" "chat_service_repo" {
   name = "${local.project_name_prefix}/${local.chat_service_name}"
   tags = local.common_tags
+  force_delete = true
 }
 resource "aws_ecr_repository" "file_service_repo" {
   name = "${local.project_name_prefix}/${local.file_service_name}"
   tags = local.common_tags
+  force_delete = true
 }
 resource "aws_ecr_repository" "notification_service_repo" {
   name = "${local.project_name_prefix}/${local.notification_service_name}"
   tags = local.common_tags
+  force_delete = true
 }
 resource "aws_ecr_repository" "frontend_repo" {
   name = "${local.project_name_prefix}/${local.frontend_name}"
   tags = local.common_tags
+  force_delete = true
 }
 
 resource "aws_ecs_cluster" "main_cluster" {
@@ -390,13 +414,13 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
 }
 
 resource "aws_db_instance" "chat_db" {
-  identifier             = "${local.project_name}-chat-db"
-  allocated_storage      = 20
-  engine                 = "postgres"
-  engine_version         = "14.15"
-  instance_class         = "db.t3.micro"
-  db_name                = "chat_service_db"
-  username               = "chatadmin"
+  identifier        = "${local.project_name}-chat-db"
+  allocated_storage = 20
+  engine            = "postgres"
+  engine_version    = "14.15"
+  instance_class    = "db.t3.micro"
+  db_name           = "chat_service_db"
+  username          = "chatadmin"
   ### DOSTOSUJ ### Zmień hasło i użyj Secrets Manager w produkcji!
   password               = "admin1234"
   parameter_group_name   = "default.postgres14"
@@ -405,13 +429,13 @@ resource "aws_db_instance" "chat_db" {
   skip_final_snapshot    = true
   # publicly_accessible  = false # W domyślnej VPC, jeśli podsieci są publiczne, to może być true
   # lub jeśli podsieci są prywatne, to false i dostęp przez SG
-  tags                   = local.common_tags
+  tags = local.common_tags
 }
 
 resource "aws_dynamodb_table" "user_profiles_table" {
-  name           = "${local.project_name}-user-profiles"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "userId"
+  name         = "${local.project_name}-user-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
   attribute {
     name = "userId"
     type = "S"
@@ -420,9 +444,9 @@ resource "aws_dynamodb_table" "user_profiles_table" {
 }
 
 resource "aws_dynamodb_table" "file_metadata_table" {
-  name           = "${local.project_name}-file-metadata"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "fileId"
+  name         = "${local.project_name}-file-metadata"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "fileId"
   attribute {
     name = "fileId"
     type = "S"
@@ -431,10 +455,10 @@ resource "aws_dynamodb_table" "file_metadata_table" {
 }
 
 resource "aws_dynamodb_table" "notifications_history_table" {
-  name           = "${local.project_name}-notifications-history"
-  billing_mode   = "PAY_PER_REQUEST"
-  hash_key       = "notificationId"
-  range_key      = "timestamp"
+  name         = "${local.project_name}-notifications-history"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "notificationId"
+  range_key    = "timestamp"
   attribute {
     name = "notificationId"
     type = "S"
@@ -462,7 +486,7 @@ resource "aws_s3_bucket" "upload_bucket" {
 }
 
 resource "aws_s3_bucket_public_access_block" "upload_bucket_access_block" {
-  bucket = aws_s3_bucket.upload_bucket.id
+  bucket                  = aws_s3_bucket.upload_bucket.id
   block_public_acls       = true
   block_public_policy     = true
   ignore_public_acls      = true
@@ -532,7 +556,8 @@ resource "aws_ecs_task_definition" "app_fargate_task_definitions" {
   container_definitions = jsonencode([
     {
       name      = "${each.key}-container"
-      image     = "${each.value.ecr_repo_url}:latest" ### UWAGA: Zmień na konkretny tag!
+      # POPRAWKA: Używamy bezpośrednio each.value.ecr_repo_url, który już zawiera tag
+      image     = "${each.value.ecr_repo_base_url}:${each.value.image_tag}"
       essential = true
       portMappings = [
         { containerPort = each.value.port, hostPort = each.value.port, protocol = "tcp" }
@@ -561,8 +586,8 @@ resource "aws_ecs_service" "app_fargate_services" {
   desired_count   = 2
 
   network_configuration {
-    subnets         = data.aws_subnets.default.ids
-    security_groups = [aws_security_group.fargate_sg.id]
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.fargate_sg.id]
     assign_public_ip = true
   }
 
@@ -583,12 +608,12 @@ resource "aws_ecs_service" "app_fargate_services" {
     aws_lb_listener_rule.chat_rule,
     aws_lb_listener_rule.file_rule,
     aws_lb_listener_rule.notification_rule,
-    aws_db_instance.chat_db, # chat-service zależy od tego
-    aws_s3_bucket.upload_bucket, # file-service zależy od tego
-    aws_dynamodb_table.file_metadata_table, # file-service zależy od tego
-    aws_sns_topic.notifications_topic, # notification-service zależy od tego
+    aws_db_instance.chat_db,                        # chat-service zależy od tego
+    aws_s3_bucket.upload_bucket,                    # file-service zależy od tego
+    aws_dynamodb_table.file_metadata_table,         # file-service zależy od tego
+    aws_sns_topic.notifications_topic,              # notification-service zależy od tego
     aws_dynamodb_table.notifications_history_table, # notification-service zależy od tego
-    aws_dynamodb_table.user_profiles_table # auth-service może zależeć od tego
+    aws_dynamodb_table.user_profiles_table          # auth-service może zależeć od tego
   ]
 
   tags = local.common_tags
@@ -694,28 +719,23 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
 
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_API_URL"
-    value     = "http://${aws_lb.main_alb.dns_name}"
+    name      = "VITE_AUTH_API_URL" # Poprawna nazwa
+    value     = "http://${aws_lb.main_alb.dns_name}/api/auth"
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_AUTH_SERVICE_PATH"
-    value     = "/api/auth"
+    name      = "VITE_CHAT_API_URL" # Poprawna nazwa
+    value     = "http://${aws_lb.main_alb.dns_name}/api/messages"
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_CHAT_SERVICE_PATH"
-    value     = "/api/messages"
+    name      = "VITE_FILE_API_URL" # Poprawna nazwa
+    value     = "http://${aws_lb.main_alb.dns_name}/api/files"
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_FILE_SERVICE_PATH"
-    value     = "/api/files"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_NOTIFICATION_SERVICE_PATH"
-    value     = "/api/notifications"
+    name      = "VITE_NOTIFICATION_API_URL" # Poprawna nazwa
+    value     = "http://${aws_lb.main_alb.dns_name}/api/notifications"
   }
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
@@ -738,7 +758,7 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
     value     = "7"
   }
   wait_for_ready_timeout = "30m"
-  tags = local.common_tags
+  tags                   = local.common_tags
 }
 
 output "alb_dns_name" {

@@ -1,3 +1,4 @@
+// W pliku: auth-service/src/main/java/pl/projektchmury/authservice/service/CognitoService.java
 package pl.projektchmury.authservice.service;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -53,12 +54,18 @@ public class CognitoService {
                     .authParameters(authParams)
                     .build();
 
-            InitiateAuthResponse response = client.initiateAuth(authRequest);
+            InitiateAuthResponse response = client.initiateAuth(authRequest); // Tylko jedno wywołanie
             System.out.println(">>> Cognito response: " + response);
-            System.out.println(">>> Access token: " + response.authenticationResult().accessToken());
-            System.out.println(">>> ID token: " + response.authenticationResult().idToken());
 
-            return client.initiateAuth(authRequest);
+            // Dodaj sprawdzenie nulla dla bezpieczeństwa przed próbą dostępu do authenticationResult
+            if (response.authenticationResult() != null) {
+                System.out.println(">>> Access token: " + response.authenticationResult().accessToken());
+                System.out.println(">>> ID token: " + response.authenticationResult().idToken());
+            } else {
+                System.out.println(">>> Cognito response did not contain authenticationResult.");
+            }
+
+            return response; // Zwróć już istniejącą odpowiedź
         }
     }
 }

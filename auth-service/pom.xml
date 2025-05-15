@@ -13,32 +13,53 @@
     <version>0.0.1-SNAPSHOT</version>
     <name>auth-service</name>
     <description>Authentication and Authorization Service for Projekt Chmury</description>
-    <url/>
-    <licenses>
-        <license/>
-    </licenses>
-    <developers>
-        <developer/>
-    </developers>
-    <scm>
-        <connection/>
-        <developerConnection/>
-        <tag/>
-        <url/>
-    </scm>
+    <!-- Usunięto puste tagi url, licenses, developers, scm dla zwięzłości, możesz je przywrócić jeśli są potrzebne -->
     <properties>
         <java.version>17</java.version>
-        <aws.sdk.version>2.25.28</aws.sdk.version>
+        <!-- AWS SDK BOM będzie zarządzać wersjami AWS SDK, więc aws.sdk.version w properties nie jest tu kluczowe -->
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding> <!-- Dodatkowe, dla raportów -->
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     </properties>
 
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>software.amazon.awssdk</groupId>
+                <artifactId>bom</artifactId>
+                <version>2.25.28</version> <!-- Możesz użyć najnowszej stabilnej wersji AWS SDK v2 BOM -->
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
     <dependencies>
+        <!-- GŁÓWNE STARTERY SPRING BOOT -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
-            <artifactId>spring-boot-starter</artifactId>
+            <artifactId>spring-boot-starter-web</artifactId>
+            <!-- Ten starter zawiera spring-boot-starter, spring-web, spring-webmvc
+                 i wbudowany serwer (np. Tomcat), co jest potrzebne dla jakarta.servlet.Filter -->
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+            <!-- Ten starter pociągnie spring-security-config, spring-security-web, itp. -->
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+            <!-- Dla walidacji tokenów JWT jako resource server -->
         </dependency>
 
+        <!-- AWS SDK -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>cognitoidentityprovider</artifactId>
+            <!-- Wersja zarządzana przez AWS SDK BOM -->
+        </dependency>
+
+        <!-- NARZĘDZIA DEWELOPERSKIE I TESTOWE -->
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-devtools</artifactId>
@@ -57,10 +78,30 @@
             <scope>test</scope>
         </dependency>
         <dependency>
-            <groupId>software.amazon.awssdk</groupId>
-            <artifactId>cognitoidentityprovider</artifactId>
-            <version>2.31.9</version> <!-- Użyj najnowszej stabilnej wersji SDK v2 -->
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
         </dependency>
+
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Lombok (jeśli używasz) -->
+        <!--
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+        -->
+
+        <!-- PONIŻSZE ZALEŻNOŚCI POWINNY BYĆ JUŻ DOSTARCZONE TRANZYTYWNIE PRZEZ STARTERY.
+             Zostawiam je zakomentowane na wszelki wypadek, ale zazwyczaj nie są potrzebne,
+             gdy używasz odpowiednich starterów.
+        -->
+        <!--
         <dependency>
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-core</artifactId>
@@ -69,19 +110,7 @@
             <groupId>org.springframework.security</groupId>
             <artifactId>spring-security-oauth2-jose</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-web</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework.security</groupId>
-            <artifactId>spring-security-config</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.springframework</groupId>
-            <artifactId>spring-webmvc</artifactId>
-        </dependency>
-
+        -->
     </dependencies>
 
     <build>
@@ -89,7 +118,7 @@
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-resources-plugin</artifactId>
-                <version>3.3.1</version> <!-- Użyj wersji, którą masz lub nowszej stabilnej -->
+                <version>3.3.1</version>
                 <configuration>
                     <encoding>UTF-8</encoding>
                 </configuration>
@@ -108,5 +137,4 @@
             </plugin>
         </plugins>
     </build>
-
 </project>

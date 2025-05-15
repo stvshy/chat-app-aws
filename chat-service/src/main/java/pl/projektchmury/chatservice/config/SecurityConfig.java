@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity; // DODAJ, JEŚLI BRAKUJE
 import org.springframework.security.oauth2.core.DelegatingOAuth2TokenValidator;
 import org.springframework.security.oauth2.core.OAuth2TokenValidator;
 import org.springframework.security.oauth2.jwt.*;
@@ -12,15 +13,18 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
-import org.springframework.web.servlet.config.annotation.CorsRegistry;
-import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
-import pl.projektchmury.chatservice.config.AudienceValidator;
+// import org.springframework.web.servlet.config.annotation.CorsRegistry; // Zakomentuj/Usuń
+// import org.springframework.web.servlet.config.annotation.WebMvcConfigurer; // Zakomentuj/Usuń
+// import pl.projektchmury.chatservice.config.AudienceValidator; // Już jest
 
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
-import static org.springframework.security.config.Customizer.withDefaults;
+// import static org.springframework.security.config.Customizer.withDefaults; // Zakomentuj/Usuń
 
 @Configuration
+@EnableWebSecurity // UPEWNIJ SIĘ, ŻE JEST
 public class SecurityConfig {
 
     @Value("${spring.security.oauth2.resourceserver.jwt.issuer-uri}")
@@ -29,30 +33,33 @@ public class SecurityConfig {
     @Value("${aws.cognito.clientId}")
     private String clientId;
 
+    // Wstrzyknij URL frontendu ze zmiennej środowiskowej
+    @Value("${app.cors.allowed-origin.frontend}")
+    private String frontendAppUrlFromEnv;
+
+    @Value("${app.cors.allowed-origin.local:http://localhost:5173}")
+    private String localFrontendAppUrl;
+
     @Bean
     public JwtDecoder jwtDecoder() {
         NimbusJwtDecoder jwtDecoder = (NimbusJwtDecoder) JwtDecoders.fromOidcIssuerLocation(issuerUri);
-
-        // Walidator sprawdzający issuer i audience
-        OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(clientId);
+        OAuth2TokenValidator<Jwt> audienceValidator = new AudienceValidator(clientId); // Upewnij się, że klasa AudienceValidator istnieje w tym pakiecie
         OAuth2TokenValidator<Jwt> withIssuer = JwtValidators.createDefaultWithIssuer(issuerUri);
         OAuth2TokenValidator<Jwt> validator = new DelegatingOAuth2TokenValidator<>(withIssuer, audienceValidator);
-
         jwtDecoder.setJwtValidator(validator);
         return jwtDecoder;
     }
 
-    // W SecurityConfig.java w chat-service
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-                .cors(withDefaults()) // lub .cors(c -> c.configurationSource(corsConfigurationSource()))
+                .cors(cors -> cors.configurationSource(corsConfigurationSource())) // ZMIANA
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
-                        // Wszystkie endpointy /api/messages/** wymagają uwierzytelnienia
+                        .requestMatchers("/actuator/**").permitAll()
                         .requestMatchers("/api/messages/**").authenticated()
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .anyRequest().denyAll() // Odmów dostępu do innych nieznanych ścieżek w tym serwisie
+                        .anyRequest().denyAll() // W chat-service było denyAll, zachowujemy
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(jwt -> jwt.decoder(jwtDecoder()))
@@ -60,41 +67,32 @@ public class SecurityConfig {
         return http.build();
     }
 
-
-    // Konfiguracja CORS (bez zmian)
-    @Bean
-    public WebMvcConfigurer corsConfigurer() {
-        return new WebMvcConfigurer() {
-            @Override
-            public void addCorsMappings(CorsRegistry registry) {
-                registry.addMapping("/**")
-                        .allowedOrigins(
-                                "http://localhost:5173",
-                                "http://projektchmury-frontend.us-east-1.elasticbeanstalk.com",
-                                "http://terraform-frontend-env-474x.eba-diwcriy5.us-east-1.elasticbeanstalk.com"
-                        )
-                        .allowedMethods("*")
-                        .allowedHeaders("*")
-                        .exposedHeaders("Authorization")
-                        .allowCredentials(true);
-            }
-        };
-    }
-
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOrigins(Arrays.asList(
-                "http://localhost:5173",
-                "http://projektchmury-frontend.us-east-1.elasticbeanstalk.com",
-                "http://terraform-frontend-env-474x.eba-diwcriy5.us-east-1.elasticbeanstalk.com"
-        ));
-        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+
+        List<String> allowedOrigins = new ArrayList<>();
+        allowedOrigins.add(localFrontendAppUrl);
+        if (frontendAppUrlFromEnv != null && !frontendAppUrlFromEnv.isEmpty()) {
+            allowedOrigins.add(frontendAppUrlFromEnv);
+        }
+        System.out.println("ChatService CORS Allowed Origins: " + allowedOrigins);
+
+        configuration.setAllowedOrigins(allowedOrigins);
+        configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
+        configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 
+    /* // Zakomentuj lub usuń WebMvcConfigurer dla CORS
+    @Bean
+    public WebMvcConfigurer corsConfigurer() {
+        // ... definicja jak wcześniej, ale używająca zmiennych ...
+    }
+    */
 }
