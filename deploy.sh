@@ -9,11 +9,11 @@ PROJECT_NAME_PREFIX="projekt-chmury-v2" # Zgodnie z terraform/main.tf locals.pro
 
 # ZDEFINIUJ TAGI OBRAZÓW DLA TEGO WDROŻENIA
 # Możesz je zmieniać przy każdym nowym wdrożeniu, aby odróżnić wersje.
-FRONTEND_TAG="v1.0.7"                 # Użyj tagu, który ostatnio przygotowywaliśmy
-AUTH_SERVICE_TAG="v1.0.9"             # Przykładowy tag, zmień wg potrzeb
-CHAT_SERVICE_TAG="v1.0.7"             # Przykładowy tag, zmień wg potrzeb
-FILE_SERVICE_TAG="v1.0.7"             # Przykładowy tag, zmień wg potrzeb
-NOTIFICATION_SERVICE_TAG="v1.0.7"     # Przykładowy tag, zmień wg potrzeb
+FRONTEND_TAG="v1.0.10"                 # Użyj tagu, który ostatnio przygotowywaliśmy
+AUTH_SERVICE_TAG="v1.0.12"             # Przykładowy tag, zmień wg potrzeb
+CHAT_SERVICE_TAG="v1.0.10"             # Przykładowy tag, zmień wg potrzeb
+FILE_SERVICE_TAG="v1.0.10"             # Przykładowy tag, zmień wg potrzeb
+NOTIFICATION_SERVICE_TAG="v1.0.10"     # Przykładowy tag, zmień wg potrzeb
 
 ECR_REGISTRY_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 

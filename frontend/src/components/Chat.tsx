@@ -236,7 +236,7 @@ export default function Chat({ token, username }: ChatProps) {
                                     {msg.fileId && fileApiUrl && (
                                         <p>
                                             <a
-                                                href={`${fileApiUrl}/files/download/${msg.fileId}`}
+                                                href={`${fileApiUrl}/download/${msg.fileId}`}
                                                 target="_blank"
                                                 rel="noreferrer"
                                             >
@@ -287,7 +287,7 @@ export default function Chat({ token, username }: ChatProps) {
                                                 {msg.fileId && fileApiUrl && (
                                                     <p>
                                                         <a
-                                                            href={`${fileApiUrl}/files/download/${msg.fileId}`}
+                                                            href={`${fileApiUrl}/download/${msg.fileId}`}
                                                             target="_blank"
                                                             rel="noreferrer"
                                                         >

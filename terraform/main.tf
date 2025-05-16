@@ -62,6 +62,7 @@ locals {
       port               = 8081
       ecr_repo_base_url  = aws_ecr_repository.auth_service_repo.repository_url
       image_tag          = var.auth_service_image_tag
+      image_tag          = var.auth_service_image_tag
       log_group_name     = aws_cloudwatch_log_group.auth_service_logs.name
       target_group_arn   = aws_lb_target_group.auth_tg.arn
       environment_vars   = [
@@ -520,6 +521,7 @@ resource "aws_dynamodb_table" "notifications_history_table" {
 resource "aws_s3_bucket" "upload_bucket" {
   bucket = "${local.project_name_prefix}-uploads-${random_string.suffix.result}"
   tags   = local.common_tags
+  force_destroy = true
 }
 
 resource "aws_s3_bucket_public_access_block" "upload_bucket_access_block" {
