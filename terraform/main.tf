@@ -387,7 +387,7 @@ resource "aws_lb_listener_rule" "chat_rule" {
   }
   condition {
     path_pattern {
-      values = ["/api/messages/*"]
+      values = ["/api/messages", "/api/messages/*"]
     }
   }
 }

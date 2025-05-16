@@ -40,10 +40,8 @@ export default function Chat({ token, username }: ChatProps) {
         try {
             // Użyj chatApiUrl
             const res = await fetch(
-                `${chatApiUrl}/messages/sent?username=${username}`,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                },
+                `${chatApiUrl}/sent?username=${username}`, // USUNIĘTO /messages
+                { headers: { Authorization: `Bearer ${token}` } }
             );
             if (res.ok) {
                 let data = await res.json();
@@ -60,12 +58,9 @@ export default function Chat({ token, username }: ChatProps) {
     const fetchReceivedMessages = async () => {
         if (!chatApiUrl) return; // Sprawdź czy URL jest dostępny
         try {
-            // Użyj chatApiUrl
             const res = await fetch(
-                `${chatApiUrl}/messages/received?username=${username}`,
-                {
-                    headers: { Authorization: `Bearer ${token}` },
-                },
+                `${chatApiUrl}/received?username=${username}`, // USUNIĘTO /messages
+                { headers: { Authorization: `Bearer ${token}` } }
             );
             if (res.ok) {
                 let data = await res.json();
@@ -105,7 +100,7 @@ export default function Chat({ token, username }: ChatProps) {
                 // file-service /upload oczekuje teraz nazwy użytkownika w parametrze
                 // fileFormData.append("username", username); // Można też pobrać z tokenu w backendzie
 
-                const fileRes = await fetch(`${fileApiUrl}/files/upload`, {
+                const fileRes = await fetch(`${fileApiUrl}/upload`, {
                     method: "POST",
                     headers: {
                         // Content-Type jest ustawiany automatycznie przez przeglądarkę dla FormData
@@ -144,7 +139,7 @@ export default function Chat({ token, username }: ChatProps) {
                 messageBody.fileId = fileIdentifier; // Dodaj fileId, jeśli istnieje
             }
 
-            const msgRes = await fetch(`${chatApiUrl}/messages`, {
+            const msgRes = await fetch(chatApiUrl, { // Użyj bezpośrednio chatApiUrl, który już jest /api/messages
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

@@ -72,22 +72,36 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        // Pozwól na wszystkie źródła (w środowisku produkcyjnym ogranicz to!)
-        configuration.setAllowedOrigins(Arrays.asList("*"));
+        List<String> allowedOriginsList = new ArrayList<>();
+        // Użyj wstrzykniętych wartości, tak jak w innych serwisach
+        if (frontendAppUrlFromEnv != null && !frontendAppUrlFromEnv.isEmpty()) {
+            allowedOriginsList.add(frontendAppUrlFromEnv);
+            // Możesz dodać logikę dla "www." jeśli potrzebujesz, ale dla EB CNAME zwykle nie jest to konieczne
+        }
+        allowedOriginsList.add(localFrontendAppUrl); // Dla testów lokalnych
 
-        // Lub lepiej: dynamiczne pobieranie origin z nagłówka
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+        System.out.println("FileService CORS Allowed Origins: " + allowedOriginsList); // Dodaj logowanie
+
+        if (allowedOriginsList.isEmpty()) {
+            // Jeśli lista jest pusta, CORS nie zadziała poprawnie z credentials.
+            // Możesz tu dodać domyślny origin lub zalogować ostrzeżenie.
+            // Na razie, dla bezpieczeństwa, nie ustawiajmy nic, co by pozwoliło na "*" z credentials.
+            System.err.println("FileService: No allowed origins configured and credentials are true. CORS might fail.");
+        } else {
+            configuration.setAllowedOrigins(allowedOriginsList);
+        }
 
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"));
-        configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setExposedHeaders(Arrays.asList("Authorization"));
-        configuration.setAllowCredentials(true);
+        configuration.setAllowedHeaders(Arrays.asList("*")); // Można zawęzić do potrzebnych, np. "Authorization", "Content-Type"
+        configuration.setExposedHeaders(Arrays.asList("Authorization", "Location")); // Dodaj "Location" jeśli używasz go przy redirectach (np. do pre-signed URL)
+        configuration.setAllowCredentials(true); // To jest OK, jeśli AllowedOrigins NIE jest "*"
         configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
         return source;
     }
+
 
     /* // Zakomentuj lub usuń WebMvcConfigurer dla CORS
     @Bean
