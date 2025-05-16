@@ -9,11 +9,11 @@ PROJECT_NAME_PREFIX="projekt-chmury-v2" # Zgodnie z terraform/main.tf locals.pro
 
 # ZDEFINIUJ TAGI OBRAZÓW DLA TEGO WDROŻENIA
 # Możesz je zmieniać przy każdym nowym wdrożeniu, aby odróżnić wersje.
-FRONTEND_TAG="v1.0.2"                 # Użyj tagu, który ostatnio przygotowywaliśmy
-AUTH_SERVICE_TAG="v1.0.3"             # Przykładowy tag, zmień wg potrzeb
-CHAT_SERVICE_TAG="v1.0.1"             # Przykładowy tag, zmień wg potrzeb
-FILE_SERVICE_TAG="v1.0.1"             # Przykładowy tag, zmień wg potrzeb
-NOTIFICATION_SERVICE_TAG="v1.0.1"     # Przykładowy tag, zmień wg potrzeb
+FRONTEND_TAG="v1.0.5"                 # Użyj tagu, który ostatnio przygotowywaliśmy
+AUTH_SERVICE_TAG="v1.0.7"             # Przykładowy tag, zmień wg potrzeb
+CHAT_SERVICE_TAG="v1.0.5"             # Przykładowy tag, zmień wg potrzeb
+FILE_SERVICE_TAG="v1.0.5"             # Przykładowy tag, zmień wg potrzeb
+NOTIFICATION_SERVICE_TAG="v1.0.5"     # Przykładowy tag, zmień wg potrzeb
 
 ECR_REGISTRY_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
@@ -143,7 +143,13 @@ echo ">>> KROK 4: Wyniki Terraform (Outputs)..."
 (
   cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
   terraform output
+
+  # Pobierz URL frontendu z outputów Terraform
+  frontend_url=$(terraform output -raw frontend_url)
+  echo "Frontend URL: $frontend_url"
+  echo "Setting CORS origin for auth-service to frontend URL: $frontend_url"
 )
+
 echo "------------------------------------------------------------------"
 echo ">>> Skrypt wdrożeniowy zakończony pomyślnie."
 echo "------------------------------------------------------------------"

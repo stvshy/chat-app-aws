@@ -72,18 +72,17 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        List<String> allowedOrigins = new ArrayList<>();
-        allowedOrigins.add(localFrontendAppUrl);
-        if (frontendAppUrlFromEnv != null && !frontendAppUrlFromEnv.isEmpty()) {
-            allowedOrigins.add(frontendAppUrlFromEnv);
-        }
-        System.out.println("FileService CORS Allowed Origins: " + allowedOrigins);
+        // Pozwól na wszystkie źródła (w środowisku produkcyjnym ogranicz to!)
+        configuration.setAllowedOrigins(Arrays.asList("*"));
 
-        configuration.setAllowedOrigins(allowedOrigins);
+        // Lub lepiej: dynamiczne pobieranie origin z nagłówka
+        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
-        configuration.setExposedHeaders(Arrays.asList("Authorization")); // Dla file-service może nie być potrzebne, ale nie zaszkodzi
+        configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);

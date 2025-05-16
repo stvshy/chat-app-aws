@@ -8,33 +8,40 @@ export default function Register() {
     const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
 
     const handleRegister = async () => {
-        // Sprawdź, czy URL jest zdefiniowany
         if (!authApiUrl) {
             alert("Auth API URL is not configured!");
             return;
         }
         try {
-            // Użyj authApiUrl zamiast starego apiUrl/api/auth/register
             const res = await fetch(`${authApiUrl}/register`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "Accept": "application/json"
+                },
                 body: JSON.stringify({ username, password }),
+                credentials: 'include'  // Dodaj tę linię
             });
-            const text = await res.text();
-            alert(
-                res.ok
-                    ? "Your account has been created!"
-                    : "Registration error:" + text,
-            );
-            if (res.ok) {
-                setUsername("");
-                setPassword("");
+
+            if (!res.ok) {
+                const errorText = await res.text();
+                throw new Error(`Registration failed: ${errorText}`);
             }
+
+            alert("Your account has been created!");
+            setUsername("");
+            setPassword("");
         } catch (error) {
-            console.error("Register error:", error);
-            alert("Error during registration.");
+            if (error instanceof Error) {
+                console.error("Register error:", error);
+                alert(`Error during registration: ${error.message}`);
+            } else {
+                console.error("Register error: Unknown error", error);
+                alert("An unknown error occurred during registration.");
+            }
         }
     };
+
 
     return (
         <div className="card register-card">

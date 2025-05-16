@@ -2,6 +2,7 @@
 
 package pl.projektchmury.authservice.config;
 
+import jakarta.annotation.PostConstruct;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -68,22 +69,30 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        List<String> allowedOrigins = new ArrayList<>();
-        allowedOrigins.add(localFrontendAppUrl); // Zawsze dodaj lokalny dla testów
-        if (frontendAppUrlFromEnv != null && !frontendAppUrlFromEnv.isEmpty()) {
-            allowedOrigins.add(frontendAppUrlFromEnv); // Dodaj URL z AWS, jeśli jest ustawiony
+        // Dynamiczne pobieranie origin z zmiennych środowiskowych
+        String frontendUrl = System.getenv("APP_CORS_ALLOWED_ORIGIN_FRONTEND");
+        if (frontendUrl != null && !frontendUrl.isEmpty()) {
+            configuration.setAllowedOrigins(List.of(frontendUrl));
+            if (frontendUrl.startsWith("http://")) {
+                configuration.addAllowedOrigin("www." + frontendUrl.substring(7));
+            }
         }
-        // Możesz dodać tu logowanie, aby sprawdzić, jakie URL-e są faktycznie dodawane
-        System.out.println("CORS Allowed Origins: " + allowedOrigins);
+        configuration.addAllowedOrigin(localFrontendAppUrl); // Domyślny lokalny
 
-        configuration.setAllowedOrigins(allowedOrigins);
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD"));
         configuration.setAllowedHeaders(Arrays.asList("*"));
         configuration.setExposedHeaders(Arrays.asList("Authorization"));
         configuration.setAllowCredentials(true);
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
         source.registerCorsConfiguration("/**", configuration);
+
+        // Logowanie skonfigurowanych originów
+        System.out.println("Configured CORS with allowed origins: " + configuration.getAllowedOrigins());
+        System.out.println("Frontend URL from env: " + frontendUrl);
+
         return source;
     }
+
 }

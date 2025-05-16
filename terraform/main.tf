@@ -189,10 +189,16 @@ resource "aws_security_group" "alb_sg" {
     cidr_blocks = ["0.0.0.0/0"]
   }
   egress {
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+  egress { // Dodaj tę regułę do testów
     from_port   = 0
     to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
+    protocol    = "-1" // All traffic
+    cidr_blocks = ["0.0.0.0/0"] // Lub zawęź do VPC CIDR / Fargate SG
   }
   tags = local.common_tags
 }
@@ -202,32 +208,31 @@ resource "aws_security_group" "fargate_sg" {
   description = "Security group for Fargate services"
   vpc_id      = data.aws_vpc.default.id
 
-  ingress {
-    from_port       = 0
-    to_port         = 0
+  ingress { // Dla auth-service
+    from_port       = 8081
+    to_port         = 8081
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = local.common_tags
-}
-
-resource "aws_security_group" "rds_sg" {
-  name        = "${local.project_name}-rds-sg"
-  description = "Security group for RDS instance"
-  vpc_id      = data.aws_vpc.default.id
-
-  ingress {
-    from_port       = 5432
-    to_port         = 5432
+  ingress { // Dla chat-service
+    from_port       = 8082
+    to_port         = 8082
     protocol        = "tcp"
-    security_groups = [aws_security_group.fargate_sg.id]
+    security_groups = [aws_security_group.alb_sg.id]
   }
+  ingress { // Dla file-service
+    from_port       = 8083
+    to_port         = 8083
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress { // Dla notification-service
+    from_port       = 8084
+    to_port         = 8084
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -275,6 +280,9 @@ resource "aws_lb" "main_alb" {
   security_groups    = [aws_security_group.alb_sg.id]
   subnets            = data.aws_subnets.default.ids
   tags               = local.common_tags
+  idle_timeout = 60
+  enable_http2 = true
+  drop_invalid_header_fields = false
 }
 
 resource "aws_lb_listener" "http_listener" {
@@ -298,15 +306,20 @@ resource "aws_lb_target_group" "auth_tg" {
   vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
   health_check {
+    enabled             = true
+    healthy_threshold   = 5
+    interval            = 60
+    matcher             = "200-299"
     path                = "/actuator/health"
+    port                = "traffic-port"
     protocol            = "HTTP"
-    matcher             = "200"
-    interval            = 30
-    timeout             = 5
-    healthy_threshold   = 2
-    unhealthy_threshold = 2
+    timeout             = 20
+    unhealthy_threshold = 5
   }
   tags = local.common_tags
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_lb_target_group" "chat_tg" {
@@ -411,6 +424,30 @@ resource "aws_db_subnet_group" "rds_subnet_group" {
   name       = "${local.project_name}-rds-subnet-group"
   subnet_ids = data.aws_subnets.default.ids
   tags       = local.common_tags
+}
+
+resource "aws_security_group" "rds_sg" {
+  name        = "${local.project_name}-rds-sg"
+  description = "Security group for RDS instance"
+  vpc_id      = data.aws_vpc.default.id // Upewnij się, że to poprawna VPC
+
+  ingress {
+    from_port       = 5432 // Port PostgreSQL
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.fargate_sg.id] // Zezwól na ruch z Fargate SG
+  }
+
+  // Reguły wychodzące zazwyczaj mogą być bardziej liberalne dla RDS,
+  // np. aby umożliwić pobieranie patchy, chyba że masz specyficzne wymagania.
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = local.common_tags
 }
 
 resource "aws_db_instance" "chat_db" {
@@ -548,8 +585,8 @@ resource "aws_ecs_task_definition" "app_fargate_task_definitions" {
   family                   = "${local.project_name}-${each.key}-task"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = "1024"
+  memory                   = "2048"
   execution_role_arn       = var.lab_role_arn
   task_role_arn            = var.lab_role_arn
 
@@ -584,6 +621,7 @@ resource "aws_ecs_service" "app_fargate_services" {
   task_definition = aws_ecs_task_definition.app_fargate_task_definitions[each.key].arn
   launch_type     = "FARGATE"
   desired_count   = 2
+  health_check_grace_period_seconds = 120
 
   network_configuration {
     subnets          = data.aws_subnets.default.ids
