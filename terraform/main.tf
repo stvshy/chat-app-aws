@@ -497,7 +497,7 @@ resource "aws_dynamodb_table" "notifications_history_table" {
   name         = "${local.project_name}-notifications-history"
   billing_mode = "PAY_PER_REQUEST"
   hash_key     = "notificationId"
-  range_key    = "timestamp"
+  # range_key    = "timestamp"
   attribute {
     name = "notificationId"
     type = "S"

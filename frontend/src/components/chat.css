@@ -217,26 +217,7 @@ h3.collapsible-header.sent-header {
     flex-direction: column;
     gap: 0.8rem;
 }
-.message-author {
-    display: flex; /* Umożliwia umieszczenie kropki obok nicku */
-    align-items: center; /* Wyśrodkowanie kropki w pionie */
-    gap: 8px; /* Odstęp między nickiem a kropką */
-}
 
-.unread-indicator {
-    /* Możesz dostosować wygląd kropki */
-    /* color: white; // Już ustawione w komponencie, ale można tu nadpisać */
-    /* background-color: white; // Jeśli chcesz pełne kółko, a nie tylko obrys */
-    /* border-radius: 50%; */
-    /* width: 10px; */
-    /* height: 10px; */
-    /* display: inline-block; */
-    margin-left: 5px; /* Mały margines od nicku */
-}
-
-.message-content.unread-content {
-    font-weight: bold; /* Pogrubienie dla nieprzeczytanej treści */
-}
 /* Message card */
 .message-card {
     background: #4a4f57;
