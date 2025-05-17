@@ -95,6 +95,7 @@ locals {
         { name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.chat_db.address}:${aws_db_instance.chat_db.port}/${aws_db_instance.chat_db.db_name}" },
         { name = "SPRING_DATASOURCE_USERNAME", value = aws_db_instance.chat_db.username },
         { name = "SPRING_DATASOURCE_PASSWORD", value = aws_db_instance.chat_db.password },
+        { name = "APP_SERVICES_NOTIFICATION_URL", value = "http://${aws_lb.main_alb.dns_name}/api/notifications" },
         # --- POCZĄTEK ZMIANY dla chat-service ---
         { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
         # --- KONIEC ZMIANY dla chat-service ---

@@ -4,6 +4,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Column; // Import dla @Column
 
 @Entity
 public class Message {
@@ -18,12 +19,18 @@ public class Message {
     private String content;
     private String fileId; // Identyfikator pliku zarządzanego przez FileService
 
+    @Column(nullable = false) // Upewniamy się, że kolumna nie jest null
+    private boolean read = false; // Domyślnie wiadomość nie jest przeczytana
+
     public Message() {}
 
     public Message(String authorUsername, String content) {
         this.authorUsername = authorUsername;
         this.content = content;
+        // this.read pozostaje domyślnie false
     }
+
+    // Gettery i Settery
 
     public Long getId() {
         return id;
@@ -56,5 +63,13 @@ public class Message {
     }
     public void setFileId(String fileId) {
         this.fileId = fileId;
+    }
+
+    public boolean isRead() { // Getter dla pola boolean często zaczyna się od "is"
+        return read;
+    }
+
+    public void setRead(boolean read) {
+        this.read = read;
     }
 }

@@ -8,6 +8,82 @@ body {
     padding: 2rem;
     margin: 0;
 }
+/* frontend/src/App.css lub frontend/src/styles.css */
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: #36393f; /* Ciemne tło dla całej aplikacji */
+    color: #dcddde;
+}
+
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    width: 100vw;
+    overflow: hidden; /* Zapobiega podwójnym paskom przewijania */
+}
+
+.app-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 25px; /* Zwiększony padding */
+    background-color: #202225; /* Ciemniejsze tło nagłówka */
+    color: white;
+    border-bottom: 1px solid #2c2f33; /* Subtelna granica */
+    flex-shrink: 0; /* Nagłówek nie powinien się kurczyć */
+    box-shadow: 0 2px 4px rgba(0,0,0,0.2); /* Lekki cień */
+}
+
+.app-header h1 {
+    margin: 0;
+    font-size: 1.4rem; /* Nieco mniejszy tytuł */
+}
+
+.app-main {
+    flex-grow: 1;
+    overflow-y: auto; /* Pozwala na przewijanie tylko głównej treści */
+    display: flex; /* Aby chat-page-wrapper mógł się rozciągnąć */
+    flex-direction: column; /* Jeśli wewnątrz będą inne elementy */
+}
+
+.chat-page-wrapper {
+    flex-grow: 1; /* Aby chat-page zajmował dostępną przestrzeń */
+    display: flex; /* Jeśli Chat.tsx ma się rozciągać */
+}
+
+/* Upewnij się, że .chat-page i .chat-container w Chat.tsx dobrze współpracują z tą strukturą */
+/* Może być konieczne usunięcie height: 100vh z .chat-page, jeśli .app-main zarządza wysokością */
+.chat-page {
+    width: 100%;
+    /* height: 100%; // Jeśli .chat-page-wrapper ma display: flex i flex-grow: 1 */
+}
+
+
+/* Style dla strony logowania/rejestracji */
+.auth-page {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    background-color: #36393f;
+}
+
+.auth-container {
+    display: flex;
+    gap: 40px; /* Odstęp między kartami logowania i rejestracji */
+    padding: 20px;
+    /* Możesz dodać inne style dla kontenera, jeśli chcesz */
+}
+
+/* Upewnij się, że .container nie jest już zdefiniowany globalnie w innym pliku CSS
+   w sposób, który by kolidował. Jeśli jest, możesz użyć bardziej specyficznej nazwy klasy. */
+
 
 .container {
     display: flex;

@@ -11,13 +11,16 @@ import java.time.Instant;
 @DynamoDbBean
 public class NotificationRecord {
 
+    private boolean readNotification = false;
     private String notificationId; // UUID
     private String userId; // Identyfikator użytkownika (np. subject z JWT)
     private String type; // Typ powiadomienia (np. "NEW_MESSAGE", "FILE_UPLOADED")
     private String message; // Treść powiadomienia
     private long timestamp; // Timestamp wysłania (epoch millis)
     private String status; // Status (np. "SENT", "FAILED")
-
+    private String relatedEntityId;
+    public String getRelatedEntityId() { return relatedEntityId; }
+    public void setRelatedEntityId(String relatedEntityId) { this.relatedEntityId = relatedEntityId; }
     // Konstruktory, gettery, settery (możesz użyć Lombok)
 
     @DynamoDbPartitionKey
@@ -28,7 +31,12 @@ public class NotificationRecord {
     public void setNotificationId(String notificationId) {
         this.notificationId = notificationId;
     }
-
+    public boolean isReadNotification() {
+        return readNotification;
+    }
+    public void setReadNotification(boolean readNotification) {
+        this.readNotification = readNotification;
+    }
     // Można dodać indeks GSI na userId i timestamp dla łatwego pobierania historii
     // @DynamoDbSecondaryPartitionKey(indexNames = "userId-timestamp-index")
     public String getUserId() {
