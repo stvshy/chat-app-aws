@@ -3,7 +3,7 @@
 /* Tło i kontener dla widoku logowania/rejestracji */
 body.auth-body {
     font-family: sans-serif;
-    background: #282c34;
+    background: #9dbeff;
     color: #fff;
     display: flex;
     justify-content: center;

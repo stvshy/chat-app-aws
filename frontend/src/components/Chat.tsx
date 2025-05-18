@@ -102,6 +102,7 @@ export default function Chat({
     };
 
     useEffect(() => {
+        console.log("Chat.tsx: Fetching messages due to change in props or mount.");
         fetchSentMessages();
         fetchReceivedMessages();
     }, [chatApiUrl, username, token]);

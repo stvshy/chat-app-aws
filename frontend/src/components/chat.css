@@ -207,6 +207,76 @@ h3.collapsible-header.sent-header {
     justify-content: space-between;
     cursor: pointer;
 }
+/* frontend/src/components/chat.css */
+
+/* ... (istniejące style) ... */
+
+.message-card {
+    background: #4a4f57;
+    padding: 0.8rem;
+    border-radius: 8px;
+    display: flex;
+    flex-direction: column;
+    text-align: left;
+    /* Usunięto gap, aby .message-header przylegał lepiej */
+}
+
+.message-header {
+    display: flex;                 /* Włącz Flexbox */
+    justify-content: space-between; /* Rozpycha elementy: nick na lewo, przycisk na prawo */
+    align-items: center;          /* Wyrównuje elementy w pionie (nick i przycisk na tej samej wysokości) */
+    margin-bottom: 0.4rem;         /* Odstęp między nagłówkiem a treścią wiadomości */
+    width: 100%;                   /* Nagłówek zajmuje całą szerokość karty */
+}
+
+.message-author {
+    margin: 0;                     /* Usuń domyślne marginesy dla <p> */
+    display: flex;                 /* Użyj flexboxa do wyrównania nicku i kropki */
+    align-items: center;           /* Wyrównaj nick i kropkę w pionie */
+    gap: 5px;                      /* Odstęp między nickiem a kropką */
+    font-weight: 500;             /* Zachowaj pogrubienie nicku */
+}
+
+.message-author strong {
+    line-height: 1; /* Pomaga w spójnym wyrównaniu tekstu */
+}
+
+/* KROPKA NIECZYTANEJ WIADOMOŚCI */
+.unread-indicator-chat {
+    /* Flexbox na .message-author powinien ją dobrze wyrównać. */
+    /* Jeśli nadal jest problem, można dodać drobne korekty: */
+    /* position: relative; */
+    /* top: -1px; */ /* Przesuń o 1px w górę, dostosuj w razie potrzeby */
+    /* Pamiętaj, że rozmiar ikonki jest ustawiony w Chat.tsx (size={10}) */
+}
+
+/* PRZYCISK "MARK AS READ" W WIADOMOŚCIACH ODEBRANYCH */
+.mark-read-button-chat {
+    background: none;
+    border: none;
+    color: #61dafb; /* Kolor ikonki */
+    cursor: pointer;
+    padding: 0;        /* Usuń padding, aby była tylko ikonka */
+    font-size: 18px;   /* Rozmiar ikonki (taki jak był) */
+    line-height: 1;    /* Zapobiega dodawaniu dodatkowej wysokości przez przycisk */
+    width: auto;
+}
+
+.mark-read-button-chat:hover {
+    color: #82e0fc; /* Efekt hover dla ikonki */
+}
+
+.message-content {
+    margin: 0;
+    line-height: 1.3;
+    font-size: 0.9rem;
+}
+
+.message-content.unread-content {
+    font-weight: 500; /* Lub inny styl dla nieprzeczytanej treści */
+}
+
+/* ... (reszta stylów w chat.css) ... */
 
 /* Message list with independent scrolling */
 .message-list {

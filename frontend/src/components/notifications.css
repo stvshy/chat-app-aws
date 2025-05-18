@@ -1,7 +1,8 @@
 /* frontend/src/components/notifications.css */
 .notifications-bell-container {
     position: relative;
-    display: inline-block;
+    margin-left: 610px;
+    /*margin-top: 10px;*/
 }
 
 .bell-button {
@@ -19,20 +20,23 @@
 
 .unread-badge {
     position: absolute;
-    top: 0px;
-    right: 0px;
-    background-color: red;
-    color: white;
+    top: 0;
+    right: 0;
+    background-color: #bd1d1d;
+    color: #fff;
     border-radius: 50%;
-    padding: 2px 6px;
-    font-size: 0.7rem;
-    font-weight: bold;
-    min-width: 18px; /* Aby kropka była okrągła nawet z jedną cyfrą */
-    height: 18px;
-    display: flex;
+    padding: 4px 4px;
+    font-size: .6rem;
+    font-weight: 700;
+    min-width: 10px;
+    /* height: 18px; */
+    display: flex
+;
     justify-content: center;
     align-items: center;
     line-height: 1;
+    /* margin-right: 2px; */
+    margin-top: 20px;
 }
 
 .notifications-panel {
@@ -64,12 +68,11 @@
 
 .notification-item {
     display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 12px 15px;
-    border-bottom: 1px solid #4f545c;
-    cursor: pointer;
-    transition: background-color 0.2s ease;
+    justify-content: space-between; /* Kluczowe dla przesunięcia przycisku w prawo */
+    align-items: center;           /* Wyrównanie elementów w pionie */
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid #4a4f57;
+    cursor: pointer
 }
 
 .notification-item:last-child {
@@ -119,15 +122,26 @@
 }
 
 .mark-read-button {
-    background: none;
+    background: transparent; /* Bez tła domyślnie */
     border: none;
-    color: #4caf50; /* Zielony ptaszek */
+    color: #0c5403; /* Kolor ikonki */
     cursor: pointer;
-    padding: 5px;
-    display: flex;
+
+    /* Nowe style dla przycisku */
+    padding: 2px;         /* Padding 2px dookoła ikonki */
+    border-radius: 50%;   /* Kształt koła */
+    width: auto;          /* Szerokość dopasowana do zawartości (ikona + padding) */
+    height: auto;         /* Wysokość dopasowana do zawartości */
+    display: inline-flex; /* Aby wyśrodkować ikonkę wewnątrz */
     align-items: center;
     justify-content: center;
-    border-radius: 4px;
+
+    margin-left: 10px; /* Odstęp od lewej, aby był bardziej z prawej (dostosuj) */
+    font-size: 1.1rem; /* Rozmiar ikonki (taki jak był) */
+    line-height: 0;    /* Pomocne przy idealnym centrowaniu ikon SVG */
+    transition: background-color 0.2s ease; /* Płynne przejście dla hover */
+    padding-left: 1px;
+    margin-bottom: auto;
 }
 
 .mark-read-button:hover {

@@ -75,21 +75,31 @@ const NotificationsBell: React.FC<NotificationsBellProps> = ({
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, [bellRef]);
 
-    const handleMarkAsReadAndNotifyApp = async (notificationId: string) => {
-        const success = await onMarkNotificationAsRead(notificationId); // Wywołaj funkcję z App.tsx
-        if (success) {
-            // fetchNotifications(); // Nie trzeba, bo App.tsx zaktualizuje notificationsFromApp
-        }
+    // const handleMarkAsReadAndNotifyApp = async (notificationId: string) => {
+    //     const success = await onMarkNotificationAsRead(notificationId); // Wywołaj funkcję z App.tsx
+    //     if (success) {
+    //         // fetchNotifications(); // Nie trzeba, bo App.tsx zaktualizuje notificationsFromApp
+    //     }
+    // };
+
+    // const handlePanelNotificationClick = (record: INotificationRecord) => {
+    //     if (!record.readNotification) {
+    //         handleMarkAsReadAndNotifyApp(record.notificationId);
+    //     }
+    //     onNotificationItemClick(record);
+    //     // setShowPanel(false); // Można zostawić lub usunąć, w zależności od preferencji UX
+    // };
+    const handleMarkNotificationAsReadClickedInPanel = async (notificationId: string) => {
+        await onMarkNotificationAsRead(notificationId); // Wywołaj funkcję z App.tsx
+        // Stan allNotifications w App.tsx zostanie zaktualizowany, co przefiltruje się tutaj
     };
 
-    const handlePanelNotificationClick = (record: INotificationRecord) => {
-        if (!record.readNotification) {
-            handleMarkAsReadAndNotifyApp(record.notificationId);
-        }
-        onNotificationItemClick(record);
-        // setShowPanel(false); // Można zostawić lub usunąć, w zależności od preferencji UX
+    // Ta funkcja będzie przekazana do NotificationsPanel jako onNotificationClick
+    const handleNotificationContentClickedInPanel = (record: INotificationRecord) => {
+        onNotificationItemClick(record); // Wywołaj funkcję z App.tsx
+        // App.tsx zajmie się oznaczeniem powiadomienia, wiadomości i podświetleniem
+        // setShowPanel(false); // Opcjonalnie zamknij panel
     };
-
     return (
         <div className="notifications-bell-container" ref={bellRef}>
             <button onClick={() => setShowPanel(!showPanel)} className="bell-button" aria-label="Notifications">
@@ -98,9 +108,9 @@ const NotificationsBell: React.FC<NotificationsBellProps> = ({
             </button>
             {showPanel && (
                 <NotificationsPanel
-                    notifications={notificationsFromApp} // Użyj listy z App.tsx
-                    onMarkAsRead={handleMarkAsReadAndNotifyApp} // Przekaż funkcję do oznaczania
-                    onNotificationClick={handlePanelNotificationClick}
+                    notifications={notificationsFromApp}
+                    onMarkAsRead={handleMarkNotificationAsReadClickedInPanel} // Przekaż tę funkcję
+                    onNotificationClick={handleNotificationContentClickedInPanel} // Przekaż tę funkcję
                     currentUsername={username}
                 />
             )}
