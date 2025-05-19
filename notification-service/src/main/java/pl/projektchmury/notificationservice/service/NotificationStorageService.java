@@ -1,4 +1,4 @@
-// notification-service/src/main/java/pl/projektchmury/notificationservice/service/NotificationStorageService.java
+// Orkiestrator Powiadomień
 package pl.projektchmury.notificationservice.service;
 
 import org.slf4j.Logger;
@@ -17,29 +17,35 @@ import java.util.UUID;
 public class NotificationStorageService {
     private static final Logger logger = LoggerFactory.getLogger(NotificationStorageService.class);
     private final NotificationRepository notificationRepository;
-    private final SnsService snsService;
-
-    @Autowired
+    private final SnsService snsService; // Pole przechowujące wstrzykniętą instancję SnsService
+    @Autowired // Mówi Springowi, żeby automatycznie wstrzyknął zależności (NotificationRepository i SnsService) do tego konstruktora.
     public NotificationStorageService(NotificationRepository notificationRepository, SnsService snsService) {
         this.notificationRepository = notificationRepository;
-        this.snsService = snsService;
+        this.snsService = snsService; // Przypisanie wstrzykniętego SnsService.
     }
 
     public NotificationRecord sendAndStoreNotification(String userId, String type, String subject, String message, String relatedEntityId) {
+        // KROK 1: Wyślij powiadomienie przez SNS.
+        // Wywołujemy metodę z naszego SnsService, przekazując temat i treść wiadomości.
+        // Metoda ta zwróci ID wiadomości SNS, jeśli wysyłka się powiodła, lub null w przypadku błędu.
         String snsMessageId = snsService.sendSnsNotification(subject, message);
-        String status = (snsMessageId != null) ? "SENT" : "FAILED";
 
+        // KROK 2: Ustal status wysyłki na podstawie tego, czy dostaliśmy ID wiadomości SNS.
+        String status = (snsMessageId != null) ? "SENT" : "FAILED"; // Jeśli snsMessageId nie jest null, to status "SENT", inaczej "FAILED".
+
+        // KROK 3: Przygotuj i zapisz rekord powiadomienia w naszej bazie danych (DynamoDB).
         NotificationRecord record = new NotificationRecord();
-        record.setNotificationId(UUID.randomUUID().toString());
-        record.setUserId(userId);
-        record.setType(type);
-        record.setMessage(message);
-        record.setTimestamp(Instant.now().toEpochMilli());
-        record.setStatus(status);
-        record.setReadNotification(false);
-        if (relatedEntityId != null) {
-            record.setRelatedEntityId(relatedEntityId);
+        record.setNotificationId(UUID.randomUUID().toString()); // Wygeneruj unikalne ID dla tego rekordu powiadomienia.
+        record.setUserId(userId); // Użytkownik, do którego jest to powiadomienie.
+        record.setType(type);     // Typ powiadomienia.
+        record.setMessage(message); // Treść powiadomienia.
+        record.setTimestamp(Instant.now().toEpochMilli()); // Aktualny czas jako liczba milisekund od epochy.
+        record.setStatus(status); // Ustaw status wysyłki ("SENT" lub "FAILED").
+        record.setReadNotification(false); // Domyślnie powiadomienie jest nieprzeczytane.
+        if (relatedEntityId != null) { // Jeśli jest powiązany identyfikator (np. ID wiadomości czatu)
+            record.setRelatedEntityId(relatedEntityId); // Zapisz go.
         }
+        // Zapisz przygotowany rekord do repozytorium (które w naszym przypadku komunikuje się z DynamoDB).
         return notificationRepository.save(record);
     }
 
@@ -74,7 +80,7 @@ public class NotificationStorageService {
         return false; // Powiadomienie nie znalezione
     }
 
-    // Dodajemy tę metodę, aby kontroler mógł pobrać zaktualizowany rekord
+    // aby kontroler mógł pobrać zaktualizowany rekord
     public Optional<NotificationRecord> getNotificationById(String notificationId) {
         return notificationRepository.findById(notificationId);
     }

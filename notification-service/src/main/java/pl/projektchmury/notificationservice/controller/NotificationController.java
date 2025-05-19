@@ -1,4 +1,14 @@
-// notification-service/src/main/java/pl/projektchmury/notificationservice/controller/NotificationController.java
+// Zewnętrzne żądanie HTTP POST -> NotificationController.createNotification()
+// NotificationController -> NotificationStorageService.sendAndStoreNotification()
+// NotificationStorageService -> SnsService.sendSnsNotification()
+// SnsService (używając SnsClient skonfigurowanego przez SnsConfig) -> AWS SNS (wysyłka wiadomości)
+// SnsService zwraca snsMessageId (lub null) -> NotificationStorageService
+// NotificationStorageService tworzy NotificationRecord i wywołuje -> DynamoDbNotificationRepository.save()
+// DynamoDbNotificationRepository (używając DynamoDbEnhancedClient skonfigurowanego przez DynamoDbConfig) -> AWS DynamoDB (zapis rekordu)
+// Dyn/amoDbNotificationRepository zwraca zapisany rekord -> NotificationStorageService
+// NotificationStorageService zwraca zapisany rekord -> NotificationController
+// NotificationController zwraca odpowiedź HTTP do klienta.
+
 package pl.projektchmury.notificationservice.controller;
 
 import org.slf4j.Logger;
