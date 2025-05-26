@@ -133,14 +133,17 @@ locals {  # Używamy ich, żeby nie powtarzać tych samych wartości w wielu mie
       log_group_name     = aws_cloudwatch_log_group.notification_service_logs.name
       target_group_arn   = aws_lb_target_group.notification_tg.arn
       environment_vars   = [
-        { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
+        { name = "SPRING_PROFILES_ACTIVE", value = "aws" }, # Ustawia aktywny profil Spring na "aws": mówi aplikacji Spring Boot: "Hej, teraz działasz w środowisku 'aws', więc załaduj odpowiednią konfigurację
         { name = "AWS_REGION", value = data.aws_region.current.name },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
-        { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
+        { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },  # Adres URL wystawcy tokenów JWT Cognito.
         { name = "AWS_SNS_TOPIC_ARN", value = aws_sns_topic.notifications_topic.arn },                   # ARN tematu SNS do wysyłania notyfikacji.
         { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name }, # Nazwa tabeli DynamoDB dla historii notyfikacji.
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" } # Adres URL frontendu, który może wysyłać żądania (ważne dla CORS).
+        # CORS (Cross-Origin Resource Sharing): To jest mechanizm bezpieczeństwa w przeglądarkach internetowych.
+        # Domyślnie przeglądarka nie pozwala stronie internetowej załadowanej z jednego adresu (np. moj-frontend.com) wysyłać żądań (np. pobierać danych) do serwera na zupełnie innym adresie (np. moj-backend-api.com). To ochrona przed złośliwymi stronami.
+        # Moje aplikacje Spring Boot (w SecurityConfig.java) używają tej zmiennej, aby powiedzieć przeglądarce: "Spokojnie, żądania przychodzące z tego konkretnego adresu frontendu są dozwolone. Możesz je przepuścić.
       ]
       depends_on_db      = false
       depends_on_s3_ddb  = false
