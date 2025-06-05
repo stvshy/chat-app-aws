@@ -1,112 +1,76 @@
 # --- Konfiguracja dostawcy AWS ---
 provider "aws" {
-  region = "us-east-1" # Mówimy Terraformowi, że chcemy tworzyć rzeczy w regionie AWS "us-east-1"
+  region = "us-east-1"
 }
 
 # --- Zmienne wejściowe dla tagów obrazów Docker ---
-# Te zmienne pozwalają nam łatwo zmieniać wersje (tagi) obrazów Docker dla każdego serwisu bez modyfikowania reszty kodu
 variable "auth_service_image_tag" {
-  description = "Docker image tag for auth-service"   # Opis tej zmiennej
-  type        = string   # Typ zmiennej to tekst (string)
-  default     = "v1.0.1"  # Domyślna wersja obrazu dla serwisu autoryzacji
-}
-variable "chat_service_image_tag" {
-  description = "Docker image tag for chat-service"  # Opis
-  type        = string  # Typ: tekst
-  default     = "v1.0.0"  # Domyślna wersja obrazu dla serwisu czatu
+  description = "Docker image tag for auth-service"
+  type        = string
+  default     = "v1.0.1"
 }
 variable "file_service_image_tag" {
-  description = "Docker image tag for file-service"  # Opis
-  type        = string  # Typ: tekst
-  default     = "v1.0.0"  # Domyślna wersja obrazu dla serwisu plików
+  description = "Docker image tag for file-service"
+  type        = string
+  default     = "v1.0.0"
 }
 variable "notification_service_image_tag" {
   description = "Docker image tag for notification-service"
   type        = string
-  default     = "v1.0.0"  # Domyślna wersja obrazu dla serwisu notyfikacji
+  default     = "v1.0.0"
 }
 variable "frontend_image_tag" {
   description = "Docker image tag for frontend"
   type        = string
-  default     = "v1.0.1"  # Domyślna wersja obrazu dla frontendu
+  default     = "v1.0.1"
+}
+variable "lambda_chat_handlers_jar_key" {
+  description = "S3 key for the chat Lambda handlers JAR file"
+  type        = string
+  default     = "chat-lambda-handlers.jar"
 }
 
 # --- Generowanie losowego ciągu znaków ---
-# S3 i ECR wymagają unikalnych nazw, więc dodajemy do nich losowy ciąg znaków
-resource "random_string" "suffix" {  # Tworzymy zasób, który wygeneruje losowy ciąg znaków
-  length  = 4  # Chcemy, żeby miał 4 znaki
-  special = false  # Bez znaków specjalnych (np. !, @, #)
-  upper   = false  # Bez wielkich liter
+resource "random_string" "suffix" {
+  length  = 4
+  special = false
+  upper   = false
 }
 
-# --- Lokalne zmienne (ułatwiające życie) ---
-# 'locals' to takie nasze wewnętrzne prywatne predefiniowane wartości, których możemy używać w reszcie pliku
-locals {  # Używamy ich, żeby nie powtarzać tych samych wartości w wielu miejscach
-  project_name_prefix = "projekt-chmury-v2"  # Główny przedrostek nazwy naszego projektu
-  project_name        = "${local.project_name_prefix}-${random_string.suffix.result}"  # Pełna, unikalna nazwa projektu (przedrostek + losowa końcówka)
+# --- Lokalne zmienne ---
+locals {
+  project_name_prefix = "projekt-chmury-v2"
+  project_name        = "${local.project_name_prefix}-${random_string.suffix.result}"
 
-  common_tags = {                                 # Zestaw wspólnych tagów (etykiet) dla wszystkich zasobów w AWS. Są widoczne w konsoli AWS
-    Project     = local.project_name_prefix       # Tag "Project" z wartością naszego przedrostka.
-    Environment = "dev"                           # Tag "Environment" ustawiony na "dev" (deweloperskie).
-    Suffix      = random_string.suffix.result     # Tag "Suffix" z wartością losowej końcówki.
+  common_tags = {
+    Project     = local.project_name_prefix
+    Environment = "dev"
+    Suffix      = random_string.suffix.result
   }
-  # Nazwy naszych serwisów (żeby nie pisać ich ciągle od nowa)
+
   auth_service_name         = "auth-service"
-  chat_service_name         = "chat-service"
   file_service_name         = "file-service"
   notification_service_name = "notification-service"
   frontend_name             = "frontend"
 
-  # --- Konfiguracja dla każdego serwisu Fargate ---
-  # To jest "mapa" (słownik), gdzie kluczem jest nazwa serwisu, a wartością jest jego konfiguracja.
-  # Dzięki temu możemy łatwo zarządzać wszystkimi serwisami backendowymi w jednym miejscu.
   fargate_services = {
-    (local.auth_service_name) = {  # Konfiguracja dla serwisu autoryzacji
-      port               = 8081    # Na jakim porcie działa ten serwis w kontenerze.
-      ecr_repo_base_url  = aws_ecr_repository.auth_service_repo.repository_url   # Adres URL repozytorium ECR (gdzie trzymamy obraz Docker) dla tego serwisu
-      image_tag          = var.auth_service_image_tag  # Wersja (tag) obrazu Docker dla tego serwisu (pobrana ze zmiennej)
-      log_group_name     = aws_cloudwatch_log_group.auth_service_logs.name  # Nazwa grupy logów w CloudWatch dla tego serwisu
-      # ARN (Amazon Resource Name) to unikalny identyfikator DOWOLNEGO zasobu w AWS, to jak numer PESEL dla każdego zasobu w AWS
-      target_group_arn   = aws_lb_target_group.auth_tg.arn  # ARN (unikalny identyfikator) grupy docelowej w Load Balancerze dla tego serwisu
-      environment_vars   = [   # Lista zmiennych środowiskowych przekazywanych do kontenera
-        { name = "SPRING_PROFILES_ACTIVE", value = "aws" },   # Ustawia aktywny profil Spring na "aws": mówi aplikacji Spring Boot: "Hej, teraz działasz w środowisku 'aws', więc załaduj odpowiednią konfigurację
-        { name = "AWS_REGION", value = data.aws_region.current.name },  # Przekazuje aktualny region AWS.
-        { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id }, # ID puli użytkowników Cognito.
-        { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id }, # ID klienta aplikacji Cognito.
-        { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" }, # Adres URL wystawcy tokenów JWT Cognito.
-        { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name }, # Nazwa tabeli DynamoDB dla profili użytkowników.
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" } # Adres URL frontendu, który może wysyłać żądania (ważne dla CORS).
-        # CORS (Cross-Origin Resource Sharing): To jest mechanizm bezpieczeństwa w przeglądarkach internetowych.
-        # Domyślnie przeglądarka nie pozwala stronie internetowej załadowanej z jednego adresu (np. moj-frontend.com) wysyłać żądań (np. pobierać danych) do serwera na zupełnie innym adresie (np. moj-backend-api.com). To ochrona przed złośliwymi stronami.
-        # Moje aplikacje Spring Boot (w SecurityConfig.java) używają tej zmiennej, aby powiedzieć przeglądarce: "Spokojnie, żądania przychodzące z tego konkretnego adresu frontendu są dozwolone. Możesz je przepuścić.
-      ]
-      depends_on_db      = false # Czy ten serwis zależy od bazy danych RDS? Nie.
-      depends_on_s3_ddb  = false # Czy ten serwis zależy od S3 lub DynamoDB (innych niż user_profiles)? Nie.
-      depends_on_sns_ddb = false # Czy ten serwis zależy od SNS lub DynamoDB (innych niż user_profiles)? Nie.
-    },
-    (local.chat_service_name) = { # Konfiguracja dla serwisu czatu.
-      port               = 8082
-      ecr_repo_base_url  = aws_ecr_repository.chat_service_repo.repository_url
-      image_tag          = var.chat_service_image_tag
-      log_group_name     = aws_cloudwatch_log_group.chat_service_logs.name
-      target_group_arn   = aws_lb_target_group.chat_tg.arn
+    (local.auth_service_name) = {
+      port               = 8081
+      ecr_repo_base_url  = aws_ecr_repository.auth_service_repo.repository_url
+      image_tag          = var.auth_service_image_tag
+      log_group_name     = aws_cloudwatch_log_group.auth_service_logs.name
+      target_group_arn   = aws_lb_target_group.auth_tg.arn
       environment_vars   = [
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
-        { name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.chat_db.address}:${aws_db_instance.chat_db.port}/${aws_db_instance.chat_db.db_name}" }, # Adres URL do bazy danych PostgreSQL.
-        { name = "SPRING_DATASOURCE_USERNAME", value = aws_db_instance.chat_db.username }, # Nazwa użytkownika bazy danych.
-        { name = "SPRING_DATASOURCE_PASSWORD", value = aws_db_instance.chat_db.password }, # Hasło do bazy danych.
-        { name = "APP_SERVICES_NOTIFICATION_URL", value = "http://${aws_lb.main_alb.dns_name}/api/notifications" }, # Adres URL serwisu notyfikacji (przez Load Balancer), bo to chat-service jest tym, który inicjuje wysłanie powiadomienia, gdy pojawia się nowa wiadomość
+        { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name },
         { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
       ]
-      depends_on_db      = true  # Tak, ten serwis zależy od bazy danych RDS.
-      depends_on_s3_ddb  = false
-      depends_on_sns_ddb = false
     },
-    (local.file_service_name) = { # Konfiguracja dla serwisu plików.
+    (local.file_service_name) = {
       port               = 8083
       ecr_repo_base_url  = aws_ecr_repository.file_service_repo.repository_url
       image_tag          = var.file_service_image_tag
@@ -118,244 +82,208 @@ locals {  # Używamy ich, żeby nie powtarzać tych samych wartości w wielu mie
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
-        { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.upload_bucket.bucket },  # Nazwa bucketu S3 do przechowywania samych plików
-        { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name }, # Nazwa tabeli DynamoDB dla metadanych plików czyli informacje: Oryginalna nazwa pliku, Kto go wrzucił, Kiedy go wrzucił, Typ pliku (np. image/jpeg), Rozmiar pliku, Klucz S3 (czyli "ścieżka" do tego pliku w buckecie S3).
+        { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.upload_bucket.bucket },
+        { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name },
         { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
       ]
-      depends_on_db      = false # to jest zwykły RDS, więc nie
-      depends_on_s3_ddb  = true  # Tak, ten serwis zależy od S3 i DynamoDB (dla metadanych plików).
-      depends_on_sns_ddb = false
     },
-    (local.notification_service_name) = { # Konfiguracja dla serwisu notyfikacji.
+    (local.notification_service_name) = {
       port               = 8084
       ecr_repo_base_url  = aws_ecr_repository.notification_service_repo.repository_url
       image_tag          = var.notification_service_image_tag
       log_group_name     = aws_cloudwatch_log_group.notification_service_logs.name
       target_group_arn   = aws_lb_target_group.notification_tg.arn
       environment_vars   = [
-        { name = "SPRING_PROFILES_ACTIVE", value = "aws" }, # Ustawia aktywny profil Spring na "aws": mówi aplikacji Spring Boot: "Hej, teraz działasz w środowisku 'aws', więc załaduj odpowiednią konfigurację
+        { name = "SPRING_PROFILES_ACTIVE", value = "aws" },
         { name = "AWS_REGION", value = data.aws_region.current.name },
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
-        { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },  # Adres URL wystawcy tokenów JWT Cognito.
-        { name = "AWS_SNS_TOPIC_ARN", value = aws_sns_topic.notifications_topic.arn },                   # ARN tematu SNS do wysyłania notyfikacji.
-        { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name }, # Nazwa tabeli DynamoDB dla historii notyfikacji.
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" } # Adres URL frontendu, który może wysyłać żądania (ważne dla CORS).
-        # CORS (Cross-Origin Resource Sharing): To jest mechanizm bezpieczeństwa w przeglądarkach internetowych.
-        # Domyślnie przeglądarka nie pozwala stronie internetowej załadowanej z jednego adresu (np. moj-frontend.com) wysyłać żądań (np. pobierać danych) do serwera na zupełnie innym adresie (np. moj-backend-api.com). To ochrona przed złośliwymi stronami.
-        # Moje aplikacje Spring Boot (w SecurityConfig.java) używają tej zmiennej, aby powiedzieć przeglądarce: "Spokojnie, żądania przychodzące z tego konkretnego adresu frontendu są dozwolone. Możesz je przepuścić.
+        { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
+        { name = "AWS_SNS_TOPIC_ARN", value = aws_sns_topic.notifications_topic.arn },
+        { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name },
+        { name = "APP_SQS_QUEUE_URL", value = aws_sqs_queue.chat_notifications_queue.id },
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
       ]
-      depends_on_db      = false
-      depends_on_s3_ddb  = false
-      depends_on_sns_ddb = true # Tak, ten serwis zależy od SNS i DynamoDB (dla historii notyfikacji), tylko notification-service jest odpowiedzialny za wysyłanie (publikowanie) wiadomości do tematu SNS
-      # Inne serwisy (np. chat-service) jeśli chcą wysłać powiadomienie, to nie robią tego bezpośrednio do SNS. Zamiast tego, wywołują API notification-service (mówią mu: "hej, wyślij takie powiadomienie"). Dopiero notification-service bierze tę informację i publikuje ją do tematu SNS.
     }
+  }
+
+  chat_lambda_common_environment_variables = {
+    DB_URL         = "jdbc:postgresql://${aws_db_instance.chat_db.address}:${aws_db_instance.chat_db.port}/${aws_db_instance.chat_db.db_name}"
+    DB_USER        = aws_db_instance.chat_db.username
+    DB_PASSWORD    = aws_db_instance.chat_db.password
+    SQS_QUEUE_URL  = aws_sqs_queue.chat_notifications_queue.id
+    AWS_REGION_ENV = data.aws_region.current.name
   }
 }
 
 # --- Pobieranie informacji o domyślnych zasobach AWS ---
-# 'data' pozwala Terraformowi odczytać informacje o istniejących zasobach lub konfiguracji AWS.
-data "aws_vpc" "default" { # Pobieramy informacje o domyślnej sieci VPC w naszym regionie.
-  default = true           # Chcemy tę, która jest oznaczona jako domyślna.
+data "aws_vpc" "default" {
+  default = true
 }
-
-data "aws_subnets" "default" { # Pobieramy informacje o domyślnych podsieciach w tej VPC.
-  filter {                     # Filtrujemy podsieci.
-    name   = "vpc-id"          # Chcemy te, które należą do VPC...
-    values = [data.aws_vpc.default.id] # ...o ID pobranym powyżej (ID domyślnej VPC).
+data "aws_subnets" "default" {
+  filter {
+    name   = "vpc-id"
+    values = [data.aws_vpc.default.id]
   }
 }
-
-data "aws_region" "current" {} # Pobieramy informacje o aktualnym regionie AWS, w którym działamy.
-data "aws_caller_identity" "current" {} # Pobieramy informacje o tożsamości (np. ID konta), z którą Terraform się uwierzytelnił.
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
 
 # --- Zmienne dla istniejących ról IAM ---
-# Te role IAM (uprawnienia) już istnieją w środowisku AWS dostarczone przez laboratorium
 variable "lab_role_arn" {
-  description = "ARN of the existing LabRole" # Opis
-  type        = string                         # Typ: tekst
-  default     = "arn:aws:iam::044902896603:role/LabRole" # ARN roli IAM, której będą używać nasze serwisy Fargate i Lambda.
+  description = "ARN of the existing LabRole"
+  type        = string
+  default     = "arn:aws:iam::044902896603:role/LabRole"
 }
-
 variable "lab_instance_profile_name" {
   description = "Name of the existing LabInstanceProfile for Elastic Beanstalk"
   type        = string
-  default     = "LabInstanceProfile" # Nazwa profilu, nie ARN
+  default     = "LabInstanceProfile"
 }
 
-# --- Grupy bezpieczeństwa (Firewalle) ---
-resource "aws_security_group" "alb_sg" { # Tworzymy grupę bezpieczeństwa dla naszego Load Balancera (ALB)
-  name        = "${local.project_name}-alb-sg"      # Nazwa grupy
-  description = "Security group for ALB"            # Opis
-  vpc_id      = data.aws_vpc.default.id             # Ta grupa należy do naszej domyślnej VPC
-
-  ingress {                          # Reguły ruchu przychodzącego (kto może się łączyć DO ALB)
-    from_port   = 80                 # Od portu 80...
-    to_port     = 80                 # ...do portu 80
-    # Port 80 to standardowy, dobrze znany port dla protokołu HTTP (czyli dla "zwykłego", nieszyfrowanego ruchu webowego)
-    # Mój Load Balancer (ALB) ma ustawiony "nasłuchiwacz" (listener) na porcie 80, żeby odbierać te przychodzące żądania HTTP od użytkowników
-    protocol    = "tcp"              # Protokół TCP (dla HTTP)
-    cidr_blocks = ["0.0.0.0/0"]      # Zezwalamy na ruch z dowolnego adresu IP (cały internet)
+# --- Grupy bezpieczeństwa ---
+resource "aws_security_group" "alb_sg" {
+  name        = "${local.project_name}-alb-sg"
+  description = "Security group for ALB"
+  vpc_id      = data.aws_vpc.default.id
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
   }
-  #Gdybyśmy chcieli używać HTTPS, czyli szyfrowanego ruchu
-  # egress {
-  #   from_port   = 443
-  #   to_port     = 443
-  #   protocol    = "tcp"
-  #   cidr_blocks = ["0.0.0.0/0"]
-  # }
-  egress {                             #  Reguły ruchu wyychodzącego
-    from_port   = 0                    # Od dowolnego portu...
-    to_port     = 0                    # ...do dowolnego portu
-    protocol    = "-1"                 # Dowolny protokół
-    cidr_blocks = ["0.0.0.0/0"]        # Do dowolnego adresu IP (ALB musi móc łączyć się z serwisami Fargate na ich portach)
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
-  tags = local.common_tags     # Dodajemy nasze wspólne tagi.
+  tags = local.common_tags
 }
 
-resource "aws_security_group" "fargate_sg" { # Tworzymy grupę bezpieczeństwa dla naszych serwisów Fargate.
-  name        = "${local.project_name}-fargate-sg"  # Nazwa.
-  description = "Security group for Fargate services" # Opis.
-  vpc_id      = data.aws_vpc.default.id             # Należy do domyślnej VPC.
-
-  # Reguły ruchu przychodzącego dla każdego serwisu Fargate.
-  ingress { # Dla auth-service
-    from_port       = 8081                            # Od portu 8081...
-    to_port         = 8081                            # ...do portu 8081.
-    protocol        = "tcp"                           # Protokół TCP.
-    security_groups = [aws_security_group.alb_sg.id]  # Zezwalamy na ruch TYLKO z naszej grupy bezpieczeństwa ALB.
-  }
-  ingress { // Dla chat-service
-    from_port       = 8082
-    to_port         = 8082
+resource "aws_security_group" "fargate_sg" {
+  name        = "${local.project_name}-fargate-sg"
+  description = "Security group for Fargate services"
+  vpc_id      = data.aws_vpc.default.id
+  ingress {
+    from_port       = 8081
+    to_port         = 8081
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-  ingress { // Dla file-service
+  ingress {
     from_port       = 8083
     to_port         = 8083
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-  ingress { // Dla notification-service
+  ingress {
     from_port       = 8084
     to_port         = 8084
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
-
-  egress {                            # Reguły ruchu wychodzącego dla serwisów Fargate.
-    from_port   = 0                   # Od dowolnego portu...
-    to_port     = 0                   # ...do dowolnego portu.
-    protocol    = "-1"                # Dowolny protokół.
-    cidr_blocks = ["0.0.0.0/0"]       # Do dowolnego adresu IP (np. żeby mogły łączyć się z innymi usługami AWS jak S3, DynamoDB, RDS, Cognito, SNS).
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
   }
   tags = local.common_tags
 }
 
-# --- Repozytoria ECR (Elastic Container Registry) ---
-# Tutaj będziemy przechowywać nasze obrazy Docker.
-resource "aws_ecr_repository" "auth_service_repo" { # Tworzymy repozytorium ECR dla serwisu autoryzacji.
-  name         = "${local.project_name_prefix}/${local.auth_service_name}" # Nazwa repozytorium.
-  tags         = local.common_tags                                       # Nasze tagi.
-  force_delete = true                                                    # Jeśli usuwamy repozytorium Terraformem, usuń je nawet jeśli zawiera obrazy
+resource "aws_security_group" "lambda_vpc_sg" {
+  name        = "${local.project_name}-lambda-vpc-sg"
+  description = "Security group for Lambda functions in VPC"
+  vpc_id      = data.aws_vpc.default.id
+  tags        = local.common_tags
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
 }
-resource "aws_ecr_repository" "chat_service_repo" { # Dla serwisu czatu.
-  name         = "${local.project_name_prefix}/${local.chat_service_name}"
+
+# --- Repozytoria ECR ---
+resource "aws_ecr_repository" "auth_service_repo" {
+  name         = "${local.project_name_prefix}/${local.auth_service_name}"
   tags         = local.common_tags
   force_delete = true
 }
-resource "aws_ecr_repository" "file_service_repo" { # Dla serwisu plików.
+resource "aws_ecr_repository" "file_service_repo" {
   name         = "${local.project_name_prefix}/${local.file_service_name}"
   tags         = local.common_tags
   force_delete = true
 }
-resource "aws_ecr_repository" "notification_service_repo" { # Dla serwisu notyfikacji.
+resource "aws_ecr_repository" "notification_service_repo" {
   name         = "${local.project_name_prefix}/${local.notification_service_name}"
   tags         = local.common_tags
   force_delete = true
 }
-resource "aws_ecr_repository" "frontend_repo" { # Dla frontendu.
+resource "aws_ecr_repository" "frontend_repo" {
   name         = "${local.project_name_prefix}/${local.frontend_name}"
   tags         = local.common_tags
   force_delete = true
 }
 
-# --- Klaster ECS (Elastic Container Service) ---
-resource "aws_ecs_cluster" "main_cluster" { # Tworzymy klaster ECS, który będzie zarządzał naszymi kontenerami Fargate.
-  name = "${local.project_name}-cluster"   # Nazwa klastra
+# --- Klaster ECS ---
+resource "aws_ecs_cluster" "main_cluster" {
+  name = "${local.project_name}-cluster"
   tags = local.common_tags
 }
 
 # --- Application Load Balancer (ALB) ---
-resource "aws_lb" "main_alb" { # Tworzymy Application Load Balancer.
-  name               = "${local.project_name}-alb" # Nazwa ALB.
-  internal           = false                       # Czy ALB ma być wewnętrzny (tylko w VPC) czy publiczny? `false` = publiczny.
-  load_balancer_type = "application"              # Typ: Application Load Balancer (warstwa 7).
-  security_groups    = [aws_security_group.alb_sg.id] # Przypisujemy grupę bezpieczeństwa stworzoną dla ALB.
-  subnets            = data.aws_subnets.default.ids   # ALB będzie działał w naszych domyślnych podsieciach.
+resource "aws_lb" "main_alb" {
+  name               = "${local.project_name}-alb"
+  internal           = false
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb_sg.id]
+  subnets            = data.aws_subnets.default.ids
   tags               = local.common_tags
-  idle_timeout       = 60                            # Czas bezczynności połączenia w sekundach (po tym czasie ALB zamknie połączenie).
-  enable_http2       = true                          # Włączamy obsługę HTTP/2.
-  drop_invalid_header_fields = false                 # Czy ALB ma odrzucać żądania z niepoprawnymi nagłówkami? `false` = nie odrzucaj.
+  idle_timeout       = 60
+  enable_http2       = true
+  drop_invalid_header_fields = false
 }
 
-# --- Listener dla ALB ---
-resource "aws_lb_listener" "http_listener" { # Tworzymy listener dla ALB, który będzie nasłuchiwał na ruch HTTP.
-  load_balancer_arn = aws_lb.main_alb.arn   # Do którego ALB należy ten listener.
-  port              = "80"                  # Nasłuchuje na porcie 80 (HTTP).
-  protocol          = "HTTP"                # Protokół HTTP.
-  default_action {                          # Domyślna akcja, jeśli żadna reguła nie pasuje.
-    type = "fixed-response"                 # Zwróć stałą odpowiedź.
+resource "aws_lb_listener" "http_listener" {
+  load_balancer_arn = aws_lb.main_alb.arn
+  port              = "80"
+  protocol          = "HTTP"
+  default_action {
+    type = "fixed-response"
     fixed_response {
-      content_type = "text/plain"           # Typ treści odpowiedzi.
-      message_body = "Service not found - Check ALB Rules" # Treść odpowiedzi.
-      status_code  = "404"                  # Kod statusu HTTP (Not Found).
+      content_type = "text/plain"
+      message_body = "Service not found - Check ALB Rules or API Gateway for Chat"
+      status_code  = "404"
     }
   }
 }
 
 # --- Grupy Docelowe (Target Groups) dla ALB ---
-# Każdy mikroserwis będzie miał swoją grupę docelową. ALB kieruje ruch do tych grup.
-resource "aws_lb_target_group" "auth_tg" { # Grupa docelowa dla serwisu autoryzacji.
-  name        = "${local.project_name}-auth-tg" # Nazwa grupy.
-  port        = 8081                            # Port, na którym nasłuchują kontenery tego serwisu.
-  protocol    = "HTTP"                          # Protokół komunikacji między ALB a kontenerami.
-  vpc_id      = data.aws_vpc.default.id         # W której VPC znajduje się ta grupa.
-  target_type = "ip"                            # Typ celu: adresy IP (dla Fargate).
-  health_check {                                # Konfiguracja sprawdzania stanu zdrowia kontenerów.
-    enabled             = true                  # Włączone sprawdzanie.
-    healthy_threshold   = 5                     # Ile kolejnych udanych sprawdzeń, by uznać kontener za zdrowy.
-    interval            = 60                    # Co ile sekund wysyłać zapytanie sprawdzające.
-    matcher             = "200-299"             # Jakie kody statusu HTTP oznaczają zdrowy kontener.
-    path                = "/actuator/health"    # Ścieżka URL do sprawdzania (endpoint Spring Boot Actuator).
-    port                = "traffic-port"        # Użyj portu, na który kierowany jest ruch.
-    protocol            = "HTTP"                # Protokół sprawdzania.
-    timeout             = 20                    # Ile sekund czekać na odpowiedź.
-    unhealthy_threshold = 5                   # Ile kolejnych nieudanych sprawdzeń, by uznać kontener za niezdrowy.
-  }
-  tags = local.common_tags
-  lifecycle {                                   # Konfiguracja cyklu życia tego zasobu.
-    create_before_destroy = true                # Najpierw stwórz nową grupę, potem usuń starą (minimalizuje przestoje przy aktualizacjach).
-    # Zapewnia to płynne przejście i minimalizuje ryzyko, że mój serwis autoryzacji przestanie na chwilę odpowiadać podczas aktualizacji jego konfiguracji w Load Balancerze.
-  }
-}
-
-resource "aws_lb_target_group" "chat_tg" { # Grupa docelowa dla serwisu czatu.
-  name        = "${local.project_name}-chat-tg"
-  port        = 8082
+resource "aws_lb_target_group" "auth_tg" {
+  name        = "${local.project_name}-auth-tg"
+  port        = 8081
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
   target_type = "ip"
   health_check {
-    path     = "/actuator/health"
-    protocol = "HTTP"
-    matcher  = "200" # Uproszczony matcher, tylko kod 200 oznacza zdrowy.
+    enabled             = true
+    healthy_threshold   = 5
+    interval            = 60
+    matcher             = "200-299"
+    path                = "/actuator/health"
+    port                = "traffic-port"
+    protocol            = "HTTP"
+    timeout             = 20
+    unhealthy_threshold = 5
   }
   tags = local.common_tags
+  lifecycle {
+    create_before_destroy = true
+  }
 }
-
-resource "aws_lb_target_group" "file_tg" { # Grupa docelowa dla serwisu plików.
+resource "aws_lb_target_group" "file_tg" {
   name        = "${local.project_name}-file-tg"
   port        = 8083
   protocol    = "HTTP"
@@ -368,8 +296,7 @@ resource "aws_lb_target_group" "file_tg" { # Grupa docelowa dla serwisu plików.
   }
   tags = local.common_tags
 }
-
-resource "aws_lb_target_group" "notification_tg" {  # Grupa docelowa dla serwisu notyfikacji.
+resource "aws_lb_target_group" "notification_tg" {
   name        = "${local.project_name}-notif-tg"
   port        = 8084
   protocol    = "HTTP"
@@ -384,36 +311,20 @@ resource "aws_lb_target_group" "notification_tg" {  # Grupa docelowa dla serwisu
 }
 
 # --- Reguły Listenera ALB ---
-# Te reguły mówią ALB, jak kierować ruch na podstawie ścieżki URL.
-resource "aws_lb_listener_rule" "auth_rule" { # Reguła dla serwisu autoryzacji.
-  listener_arn = aws_lb_listener.http_listener.arn # Do którego listenera należy ta reguła.
-  priority     = 100                               # Priorytet reguły (niższa liczba = wyższy priorytet).
-  action {                                          # Co zrobić, gdy warunek jest spełniony.
-    type             = "forward"                    # Przekaż ruch dalej.
-    target_group_arn = aws_lb_target_group.auth_tg.arn # Do grupy docelowej serwisu autoryzacji.
-  }
-  condition {                                       # Warunek, który musi być spełniony.
-    path_pattern {                                  # Dopasowanie na podstawie ścieżki URL.
-      values = ["/api/auth/*"]                      # Jeśli ścieżka zaczyna się od "/api/auth/".
-    }
-  }
-}
-
-resource "aws_lb_listener_rule" "chat_rule" { # Reguła dla serwisu czatu.
+resource "aws_lb_listener_rule" "auth_rule" {
   listener_arn = aws_lb_listener.http_listener.arn
-  priority     = 110
+  priority     = 100
   action {
     type             = "forward"
-    target_group_arn = aws_lb_target_group.chat_tg.arn
+    target_group_arn = aws_lb_target_group.auth_tg.arn
   }
   condition {
     path_pattern {
-      values = ["/api/messages", "/api/messages/*"] # Jeśli ścieżka to "/api/messages" LUB zaczyna się od "/api/messages/".
+      values = ["/api/auth/*"]
     }
   }
 }
-
-resource "aws_lb_listener_rule" "file_rule" { # Reguła dla serwisu plików.
+resource "aws_lb_listener_rule" "file_rule" {
   listener_arn = aws_lb_listener.http_listener.arn
   priority     = 120
   action {
@@ -426,8 +337,7 @@ resource "aws_lb_listener_rule" "file_rule" { # Reguła dla serwisu plików.
     }
   }
 }
-
-resource "aws_lb_listener_rule" "notification_rule" { # Reguła dla serwisu notyfikacji.
+resource "aws_lb_listener_rule" "notification_rule" {
   listener_arn = aws_lb_listener.http_listener.arn
   priority     = 130
   action {
@@ -441,67 +351,65 @@ resource "aws_lb_listener_rule" "notification_rule" { # Reguła dla serwisu noty
   }
 }
 
-# --- Baza Danych RDS (Relational Database Service) dla serwisu czatu ---
-resource "aws_db_subnet_group" "rds_subnet_group" { # Tworzymy grupę podsieci dla naszej bazy danych RDS.
-  name       = "${local.project_name}-rds-subnet-group" # Nazwa grupy podsieci.
-  subnet_ids = data.aws_subnets.default.ids             # Baza danych będzie mogła działać w naszych domyślnych podsieciach.
+
+
+# --- Baza Danych RDS ---
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name       = "${local.project_name}-rds-subnet-group"
+  subnet_ids = data.aws_subnets.default.ids
   tags       = local.common_tags
 }
-
-resource "aws_security_group" "rds_sg" { # Tworzymy grupę bezpieczeństwa dla naszej bazy danych RDS.
-  name        = "${local.project_name}-rds-sg"      # Nazwa
-  description = "Security group for RDS instance"   # Opis
-  vpc_id      = data.aws_vpc.default.id             # Należy do domyślnej VPC
-
-  ingress {                                         # Reguły ruchu przychodzącego (kto może łączyć się DO bazy).
-    from_port       = 5432                            # Od portu 5432 (standardowy port PostgreSQL)...
-    to_port         = 5432                            # ...do portu 5432.
-    protocol        = "tcp"                           # Protokół TCP.
-    security_groups = [aws_security_group.fargate_sg.id] # Zezwalamy na ruch TYLKO z naszej grupy bezpieczeństwa serwisów Fargate (czyli tylko chat-service będzie mógł się połączyć)
+resource "aws_security_group" "rds_sg" {
+  name        = "${local.project_name}-rds-sg"
+  description = "Security group for RDS instance"
+  vpc_id      = data.aws_vpc.default.id
+  ingress {
+    description     = "Allow Lambda to connect to RDS"
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda_vpc_sg.id]
   }
-
-  egress {                                          # Reguły ruchu wychodzącego (gdzie baza może się łączyć).
-    from_port   = 0                                 # Zazwyczaj bazy danych nie muszą inicjować wielu połączeń wychodzących,
-    to_port     = 0                                 # ale ta reguła pozwala na dowolny ruch wychodzący (np. po aktualizacje).
+  egress {
+    from_port   = 0
+    to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
   tags = local.common_tags
 }
-
-resource "aws_db_instance" "chat_db" { # Tworzymy instancję bazy danych PostgreSQL
-  identifier           = "${local.project_name}-chat-db" # Unikalny identyfikator instancji.
-  allocated_storage    = 20                               # Rozmiar dysku w GB.
-  engine               = "postgres"                       # Silnik bazy danych: PostgreSQL.
-  engine_version       = "14.15"                          # Wersja silnika PostgreSQL. <--- POWRÓT DO ORYGINAŁU
-  instance_class       = "db.t3.micro"                    # Typ instancji (wielkość serwera). "t3.micro" jest mały i tani, dobry na start.
-  db_name              = "chat_service_db"                # Nazwa samej bazy danych, która zostanie utworzona wewnątrz instancji.
-  username             = "chatadmin"                      # Nazwa użytkownika-administratora bazy.
-  password             = "admin1234"                      # Hasło użytkownika. UWAGA: W produkcji użyj czegoś bezpieczniejszego i zarządzaj tym np. przez AWS Secrets Manager!
-  parameter_group_name = "default.postgres14"            # Grupa parametrów konfiguracyjnych dla PostgreSQL 14. <--- POWRÓT DO ORYGINAŁU
-  db_subnet_group_name = aws_db_subnet_group.rds_subnet_group.name # Grupa podsieci, w której baza będzie działać.
-  vpc_security_group_ids = [aws_security_group.rds_sg.id]  # Grupa bezpieczeństwa dla bazy.
-  skip_final_snapshot  = true      # Czy pominąć tworzenie ostatecznej migawki (backupu) przy usuwaniu bazy? `true` = tak, pomiń (szybsze usuwanie, ale tracisz backup).
+resource "aws_db_instance" "chat_db" {
+  identifier           = "${local.project_name}-chat-db"
+  allocated_storage    = 20
+  engine               = "postgres"
+  engine_version       = "14.15"
+  instance_class       = "db.t3.micro"
+  db_name              = "chat_service_db"
+  username             = "chatadmin"
+  password             = "admin1234"
+  parameter_group_name = "default.postgres14"
+  db_subnet_group_name = aws_db_subnet_group.rds_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  skip_final_snapshot  = true
   tags = local.common_tags
 }
 
 # --- Tabele DynamoDB ---
-# DynamoDB to baza NoSQL, dobra do przechowywania prostych danych klucz-wartość lub dokumentów.
-resource "aws_dynamodb_table" "user_profiles_table" { # Tabela dla profili użytkowników (może być używana przez auth-service).
-  name         = "${local.project_name}-user-profiles" # Nazwa tabeli.
-  billing_mode = "PAY_PER_REQUEST"                    # Model rozliczeń: płacisz za faktyczne odczyty/zapisy (dobry na start).
-  hash_key     = "userId"                              # Klucz główny (partycji) tabeli. Każdy profil będzie identyfikowany przez "userId".
-  attribute {                                          # Definicja atrybutu klucza głównego.
-    name = "userId"                                    # Nazwa atrybutu.
-    type = "S"                                         # Typ atrybutu: String (tekst).
+resource "aws_dynamodb_table" "user_profiles_table" {
+  name         = "${local.project_name}-user-profiles"
+  billing_mode = "PAY_PER_REQUEST"
+  hash_key     = "userId"
+  attribute {
+    name = "userId"
+    type = "S"
   }
   tags = local.common_tags
 }
 
-resource "aws_dynamodb_table" "file_metadata_table" { # Tabela dla metadanych plików (używana przez file-service).
+resource "aws_dynamodb_table" "file_metadata_table" {
   name         = "${local.project_name}-file-metadata"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "fileId" # Klucz główny: "fileId".
+  hash_key     = "fileId"
   attribute {
     name = "fileId"
     type = "S"
@@ -509,173 +417,158 @@ resource "aws_dynamodb_table" "file_metadata_table" { # Tabela dla metadanych pl
   tags = local.common_tags
 }
 
-resource "aws_dynamodb_table" "notifications_history_table" { # Tabela dla historii notyfikacji (używana przez notification-service).
+resource "aws_dynamodb_table" "notifications_history_table" {
   name         = "${local.project_name}-notifications-history"
   billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "notificationId" # Klucz główny: "notificationId".
+  hash_key     = "notificationId"
   attribute {
     name = "notificationId"
     type = "S"
   }
-  attribute { # Dodatkowy atrybut, który będzie używany w indeksie.
+  attribute {
     name = "timestamp"
-    type = "N" # Typ: Number (liczba).
+    type = "N"
   }
-  attribute { # Dodatkowy atrybut, który będzie używany w indeksie.
+  attribute {
     name = "userId"
     type = "S"
   }
-  global_secondary_index {                            # Definicja globalnego indeksu wtórnego (GSI).
-    name            = "userId-timestamp-index"        # Nazwa indeksu. Pozwoli szybko wyszukiwać notyfikacje po "userId" i sortować po "timestamp".
-    hash_key        = "userId"                        # Klucz partycji dla tego indeksu.
-    range_key       = "timestamp"                     # Klucz sortowania dla tego indeksu.
-    projection_type = "ALL"                           # Jakie atrybuty mają być kopiowane do indeksu? "ALL" = wszystkie.
+  global_secondary_index {
+    name            = "userId-timestamp-index"
+    hash_key        = "userId"
+    range_key       = "timestamp"
+    projection_type = "ALL"
   }
   tags = local.common_tags
 }
-
-# --- Bucket S3 (Simple Storage Service) ---
-# S3 to usługa do przechowywania obiektów (plików).
-resource "aws_s3_bucket" "upload_bucket" { # Tworzymy bucket S3 do przechowywania przesyłanych plików.
-  bucket        = "${local.project_name_prefix}-uploads-${random_string.suffix.result}" # Unikalna nazwa bucketu (musi być globalnie unikalna).
+# --- Bucket S3 ---
+resource "aws_s3_bucket" "upload_bucket" {
+  bucket        = "${local.project_name_prefix}-uploads-${random_string.suffix.result}"
   tags          = local.common_tags
-  force_destroy = true # Jeśli usuwamy bucket Terraformem, usuń go nawet jeśli zawiera pliki
+  force_destroy = true
+}
+resource "aws_s3_bucket_public_access_block" "upload_bucket_access_block" {
+  bucket = aws_s3_bucket.upload_bucket.id
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+resource "aws_s3_bucket" "lambda_code_bucket" {
+  bucket        = "${local.project_name_prefix}-lambda-code-${random_string.suffix.result}"
+  tags          = local.common_tags
+  force_destroy = true
 }
 
-resource "aws_s3_bucket_public_access_block" "upload_bucket_access_block" { # Konfiguracja blokady publicznego dostępu do bucketu.
-  bucket = aws_s3_bucket.upload_bucket.id # Do którego bucketu stosujemy te ustawienia.
-
-  block_public_acls       = true # Blokuj publiczne listy ACL (Access Control Lists).
-  block_public_policy     = true # Blokuj publiczne polityki bucketu.
-  ignore_public_acls      = true # Ignoruj publiczne listy ACL.
-  restrict_public_buckets = true # Ograniczaj publiczne buckety.
-  # Generalnie: chcemy, żeby nasz bucket był prywatny. Dostęp do plików będzie np. przez presigned URL.
-}
-
-# --- AWS Cognito (Zarządzanie użytkownikami) ---
-resource "aws_cognito_user_pool" "chat_pool" { # Tworzymy pulę użytkowników Cognito.
-  name = "${local.project_name}-user-pool"    # Nazwa puli.
-  lambda_config {                             # Konfiguracja triggerów Lambda.
-    pre_sign_up = aws_lambda_function.auto_confirm_user.arn # Przed rejestracją użytkownika, wywołaj funkcję Lambda "auto_confirm_user".
+# --- AWS Cognito ---
+resource "aws_cognito_user_pool" "chat_pool" {
+  name = "${local.project_name}-user-pool"
+  lambda_config {
+    pre_sign_up = aws_lambda_function.auto_confirm_user.arn
   }
-  password_policy {                           # Polityka haseł.
-    minimum_length    = 6                     # Minimalna długość hasła.
-    require_lowercase = true                  # Wymagaj małych liter.
-    require_numbers   = false                 # Nie Wymagaj cyfr.
-    require_symbols   = false                 # Nie wymagaj symboli.
-    require_uppercase = false                  # Nie wymagaj wielkich liter.
+  password_policy {
+    minimum_length    = 6
+    require_lowercase = true
+    require_numbers   = false
+    require_symbols   = false
+    require_uppercase = false
   }
   tags = local.common_tags
 }
-
-resource "aws_cognito_user_pool_client" "chat_pool_client" { # Tworzymy klienta aplikacji dla naszej puli użytkowników.
-  name                = "${local.project_name}-client"    # Nazwa klienta.
-  user_pool_id        = aws_cognito_user_pool.chat_pool.id # Do której puli należy ten klient.
-  generate_secret     = false                             # Czy generować sekret klienta? `false` = nie (dla aplikacji webowych/mobilnych).
-  explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"] # Jakie przepływy autoryzacji są dozwolone.
-  # ALLOW_USER_PASSWORD_AUTH: logowanie loginem i hasłem.
-  # ALLOW_REFRESH_TOKEN_AUTH: odświeżanie tokenu.
-  # tags = local.common_tags # Tagi dla tego zasobu nie są bezpośrednio wspierane w ten sposób, można je dodać na poziomie puli.
+resource "aws_cognito_user_pool_client" "chat_pool_client" {
+  name                = "${local.project_name}-client"
+  user_pool_id        = aws_cognito_user_pool.chat_pool.id
+  generate_secret     = false
+  explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
-# --- AWS SNS (Simple Notification Service) ---
-resource "aws_sns_topic" "notifications_topic" { # Tworzymy temat SNS do wysyłania notyfikacji.
-  name = "${local.project_name}-notifications-topic" # Nazwa tematu.
+# --- AWS SNS ---
+resource "aws_sns_topic" "notifications_topic" {
+  name = "${local.project_name}-notifications-topic"
   tags = local.common_tags
+}
+
+# --- Kolejka SQS ---
+resource "aws_sqs_queue" "chat_notifications_queue" {
+  name                        = "${local.project_name}-chat-notifications-queue"
+  delay_seconds               = 0
+  message_retention_seconds   = 345600
+  visibility_timeout_seconds  = 60
+  receive_wait_time_seconds   = 10
+  tags                        = local.common_tags
 }
 
 # --- Grupy Logów CloudWatch ---
-# Tutaj będą przechowywane logi z naszych kontenerów Fargate.
-resource "aws_cloudwatch_log_group" "auth_service_logs" { # Grupa logów dla serwisu autoryzacji.
-  name              = "/ecs/${local.project_name}/${local.auth_service_name}" # Nazwa grupy logów (standardowa konwencja dla ECS).
-  retention_in_days = 7                                                     # Jak długo przechowywać logi (7 dni).
-  tags              = local.common_tags
-}
-resource "aws_cloudwatch_log_group" "chat_service_logs" { # Dla serwisu czatu.
-  name              = "/ecs/${local.project_name}/${local.chat_service_name}"
+resource "aws_cloudwatch_log_group" "auth_service_logs" {
+  name              = "/ecs/${local.project_name}/${local.auth_service_name}"
   retention_in_days = 7
   tags              = local.common_tags
 }
-resource "aws_cloudwatch_log_group" "file_service_logs" { # Dla serwisu plików.
+resource "aws_cloudwatch_log_group" "file_service_logs" {
   name              = "/ecs/${local.project_name}/${local.file_service_name}"
   retention_in_days = 7
   tags              = local.common_tags
 }
-resource "aws_cloudwatch_log_group" "notification_service_logs" { # Dla serwisu notyfikacji.
+resource "aws_cloudwatch_log_group" "notification_service_logs" {
   name              = "/ecs/${local.project_name}/${local.notification_service_name}"
   retention_in_days = 7
   tags              = local.common_tags
 }
 
-# --- Definicje Zadań ECS (Task Definitions) ---
-# Definicja zadania mówi ECS, jaki obraz Docker uruchomić, ile CPU/pamięci przydzielić, jakie zmienne środowiskowe ustawić itp.
-# Używamy pętli `for_each`, żeby stworzyć definicję zadania dla każdego serwisu z naszej mapy `local.fargate_services`.
+# --- Definicje Zadań i Usługi ECS dla Fargate ---
 resource "aws_ecs_task_definition" "app_fargate_task_definitions" {
-  for_each = local.fargate_services # Dla każdego elementu w mapie `local.fargate_services`...
-
-  family                   = "${local.project_name}-${each.key}-task" # Nazwa rodziny definicji zadania (each.key to nazwa serwisu, np. "auth-service").
-  network_mode             = "awsvpc"                                 # Tryb sieciowy: "awsvpc" (wymagany dla Fargate, daje każdemu zadaniu własny interfejs sieciowy).
-  requires_compatibilities = ["FARGATE"]                              # Wymaga kompatybilności z Fargate.
-  cpu                      = "1024"                                   # Ile jednostek CPU przydzielić (1024 = 1 vCPU).
-  memory                   = "2048"                                   # Ile pamięci RAM w MiB przydzielić (2048 MiB = 2 GB).
-  execution_role_arn       = var.lab_role_arn                         # Rola IAM, której ECS użyje do pobrania obrazu Docker i wysyłania logów do CloudWatch.
-  task_role_arn            = var.lab_role_arn                         # Rola IAM, której użyje sam kontener (aplikacja wewnątrz) do dostępu do innych usług AWS (np. S3, DynamoDB).
-  container_definitions = jsonencode([ # Definicja kontenera (lub kontenerów) w zadaniu, w formacie JSON.
+  for_each = local.fargate_services
+  family                   = "${local.project_name}-${each.key}-task"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "1024"
+  memory                   = "2048"
+  execution_role_arn       = var.lab_role_arn
+  task_role_arn            = var.lab_role_arn
+  container_definitions = jsonencode([
     {
-      name      = "${each.key}-container"                               # Nazwa kontenera.
-      image     = "${each.value.ecr_repo_base_url}:${each.value.image_tag}" # Pełny adres obrazu Docker w ECR (each.value odnosi się do wartości z mapy `local.fargate_services`).
-      essential = true                                                  # Czy ten kontener jest niezbędny do działania zadania? `true` = tak (jeśli padnie, całe zadanie padnie).
-      portMappings = [                                                  # Mapowanie portów.
-        { containerPort = each.value.port, hostPort = each.value.port, protocol = "tcp" } # Mapuj port kontenera (np. 8081) na ten sam port hosta
-      ]
-      environment = each.value.environment_vars                         # Zmienne środowiskowe dla kontenera (pobrane z `local.fargate_services`).
-      logConfiguration = {                                              # Konfiguracja loggowania.
-        logDriver = "awslogs"                                           # Sterownik logów: "awslogs" (do CloudWatch).
+      name      = "${each.key}-container"
+      image     = "${each.value.ecr_repo_base_url}:${each.value.image_tag}"
+      essential = true
+      portMappings = [{ containerPort = each.value.port, hostPort = each.value.port, protocol = "tcp" }]
+      environment = each.value.environment_vars
+      logConfiguration = {
+        logDriver = "awslogs"
         options = {
-          "awslogs-group"         = each.value.log_group_name           # Do której grupy logów wysyłać.
-          "awslogs-region"        = data.aws_region.current.name        # W jakim regionie jest grupa logów.
-          "awslogs-stream-prefix" = "ecs-${each.key}"                   # Przedrostek dla strumieni logów w grupie.
+          "awslogs-group"         = each.value.log_group_name
+          "awslogs-region"        = data.aws_region.current.name
+          "awslogs-stream-prefix" = "ecs-${each.key}"
         }
       }
     }
   ])
   tags = local.common_tags
 }
-
-# --- Usługi ECS (ECS Services) ---
-# Usługa ECS dba o to, żeby odpowiednia liczba kopii (zadań) naszej aplikacji działała i była zarejestrowana w Load Balancerze.
-# Również używamy pętli `for_each`.
 resource "aws_ecs_service" "app_fargate_services" {
-  for_each = local.fargate_services # Dla każdego serwisu...
-
-  name            = "${local.project_name}-${each.key}-service" # Nazwa usługi ECS.
-  cluster         = aws_ecs_cluster.main_cluster.id             # Do którego klastra ECS należy ta usługa.
-  task_definition = aws_ecs_task_definition.app_fargate_task_definitions[each.key].arn # Której definicji zadania ma używać ta usługa.
-  launch_type     = "FARGATE"                                   # Typ uruchomienia: Fargate.
-  desired_count   = 2                                           # Ile kopii (zadań) tej aplikacji ma działać jednocześnie (minimum 2 dla redundancji).
-  health_check_grace_period_seconds = 120                       # Czas (w sekundach) po uruchomieniu zadania, przez który ECS będzie ignorował nieudane health checki z Load Balancera (daje czas aplikacji na start).
-
-  network_configuration {                                       # Konfiguracja sieciowa dla zadań.
-    subnets          = data.aws_subnets.default.ids             # W których podsieciach mają być uruchamiane zadania.
-    security_groups  = [aws_security_group.fargate_sg.id]       # Jaką grupę bezpieczeństwa mają mieć zadania.
-    assign_public_ip = true                                     # Czy przydzielać publiczny adres IP zadaniom? `true` = tak (potrzebne, żeby mogły pobrać obraz Docker z ECR i komunikować się z niektórymi usługami AWS, jeśli nie ma NAT Gateway).
+  for_each = local.fargate_services
+  name            = "${local.project_name}-${each.key}-service"
+  cluster         = aws_ecs_cluster.main_cluster.id
+  task_definition = aws_ecs_task_definition.app_fargate_task_definitions[each.key].arn
+  launch_type     = "FARGATE"
+  desired_count   = 1
+  health_check_grace_period_seconds = 120
+  network_configuration {
+    subnets          = data.aws_subnets.default.ids
+    security_groups  = [aws_security_group.fargate_sg.id]
+    assign_public_ip = true
   }
-
-  load_balancer {                                               # Konfiguracja integracji z Load Balancerem.
-    target_group_arn = each.value.target_group_arn              # Do której grupy docelowej ALB mają być rejestrowane zadania tej usługi.
-    container_name   = "${each.key}-container"                  # Nazwa kontenera w definicji zadania, który obsługuje ruch.
-    container_port   = each.value.port                          # Port tego kontenera.
+  load_balancer {
+    target_group_arn = each.value.target_group_arn
+    container_name   = "${each.key}-container"
+    container_port   = each.value.port
   }
-
-  deployment_circuit_breaker { # Mechanizm "bezpiecznika" przy wdrożeniach.
-    enable   = true            # Włączony.
-    rollback = true            # Jeśli wdrożenie się nie uda, automatycznie wróć do poprzedniej stabilnej wersji.
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
   }
-  deployment_controller { type = "ECS" } # Kto zarządza wdrożeniami? ECS.
-
-  depends_on = [ # Ta usługa zależy od (musi być stworzona PO) tych zasobach:
+  deployment_controller { type = "ECS" }
+  depends_on = [
     aws_lb_listener_rule.auth_rule,
-    aws_lb_listener_rule.chat_rule,
     aws_lb_listener_rule.file_rule,
     aws_lb_listener_rule.notification_rule,
     aws_db_instance.chat_db,
@@ -683,121 +576,578 @@ resource "aws_ecs_service" "app_fargate_services" {
     aws_dynamodb_table.file_metadata_table,
     aws_sns_topic.notifications_topic,
     aws_dynamodb_table.notifications_history_table,
-    aws_dynamodb_table.user_profiles_table
+    aws_dynamodb_table.user_profiles_table,
+    aws_sqs_queue.chat_notifications_queue
   ]
-  # `depends_on` pomaga Terraformowi ustalić prawidłową kolejność tworzenia zasobów.
-  # Chociaż Terraform często sam to wykrywa, jawne `depends_on` może być potrzebne w bardziej złożonych przypadkach
-  # lub gdy zależności nie są oczywiste (np. serwis Fargate potrzebuje, żeby baza danych była już gotowa).
-
   tags = local.common_tags
 }
 
 # --- Automatyczne Skalowanie Usług ECS ---
-resource "aws_appautoscaling_target" "app_fargate_scaling_targets" { # Definiujemy cel skalowania dla każdej usługi ECS.
+resource "aws_appautoscaling_target" "app_fargate_scaling_targets" {
   for_each = local.fargate_services
-
-  max_capacity       = 4                             # Maksymalna liczba zadań, do której usługa może się wyskalować.
-  min_capacity       = 2                             # Minimalna liczba zadań, która zawsze musi działać.
-  resource_id        = "service/${aws_ecs_cluster.main_cluster.name}/${aws_ecs_service.app_fargate_services[each.key].name}" # ID zasobu, który skalujemy (nasza usługa ECS).
-  scalable_dimension = "ecs:service:DesiredCount"    # Co skalujemy? Liczbę pożądanych zadań w usłudze ECS.
-  service_namespace  = "ecs"                         # Przestrzeń nazw usługi: ECS.
+  max_capacity       = 2
+  min_capacity       = 1
+  resource_id        = "service/${aws_ecs_cluster.main_cluster.name}/${aws_ecs_service.app_fargate_services[each.key].name}"
+  scalable_dimension = "ecs:service:DesiredCount"
+  service_namespace  = "ecs"
 }
-
-resource "aws_appautoscaling_policy" "app_fargate_cpu_scaling_policies" { # Definiujemy politykę skalowania (kiedy skalować).
+resource "aws_appautoscaling_policy" "app_fargate_cpu_scaling_policies" {
   for_each = local.fargate_services
-
-  name               = "${local.project_name}-${each.key}-cpu-scaling" # Nazwa polityki.
-  policy_type        = "TargetTrackingScaling"                         # Typ polityki: śledzenie celu (np. utrzymuj średnie CPU na poziomie X%).
-  resource_id        = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].resource_id # Do którego celu skalowania stosujemy tę politykę.
+  name               = "${local.project_name}-${each.key}-cpu-scaling"
+  policy_type        = "TargetTrackingScaling"
+  resource_id        = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].service_namespace
-
-  target_tracking_scaling_policy_configuration { # Konfiguracja śledzenia celu.
+  target_tracking_scaling_policy_configuration {
     predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization" # Metryka, którą śledzimy: średnie wykorzystanie CPU przez usługę ECS.
+      predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
-    target_value       = 75.0  # Cel: utrzymuj średnie wykorzystanie CPU na poziomie 75%. Jeśli przekroczy, dodaj zadania. Jeśli spadnie, usuń.
-    scale_in_cooldown  = 300   # Czas (w sekundach) oczekiwania po skalowaniu w dół, zanim znowu można skalować w dół (zapobiega zbyt częstym zmianom).
-    scale_out_cooldown = 60    # Czas (w sekundach) oczekiwania po skalowaniu w górę, zanim znowu można skalować w górę.
+    target_value       = 75.0
+    scale_in_cooldown  = 300
+    scale_out_cooldown = 60
   }
 }
 
 # --- Funkcja Lambda do automatycznego potwierdzania użytkowników Cognito ---
-resource "aws_lambda_function" "auto_confirm_user" { # Tworzymy funkcję Lambda.
-  function_name = "${local.project_name}-auto-confirm-user" # Nazwa funkcji.
-  runtime       = "python3.9"                               # Środowisko uruchomieniowe: Python 3.9.
-  handler       = "auto_confirm_user.lambda_handler"        # Nazwa pliku i funkcji w kodzie Lambda, która ma być wywołana (plik: auto_confirm_user.py, funkcja: lambda_handler).
-  role          = var.lab_role_arn                          # Rola IAM, której użyje funkcja Lambda (musi mieć uprawnienia np. do zapisu logów).
-
-  filename         = "${path.module}/lambda/auto_confirm_user.zip" # Ścieżka do spakowanego kodu funkcji Lambda. path.module to katalog, gdzie jest ten plik main.tf.
-  source_code_hash = filebase64sha256("${path.module}/lambda/auto_confirm_user.zip") # Skrót (hash) kodu. Jeśli kod się zmieni, Terraform zaktualizuje funkcję.
+resource "aws_lambda_function" "auto_confirm_user" {
+  function_name = "${local.project_name}-auto-confirm-user"
+  runtime       = "python3.9"
+  handler       = "auto_confirm_user.lambda_handler"
+  role          = var.lab_role_arn
+  filename         = "${path.module}/lambda/auto_confirm_user.zip"
+  source_code_hash = filebase64sha256(length(fileset(path.module, "lambda/auto_confirm_user.zip")) > 0 ? "${path.module}/lambda/auto_confirm_user.zip" : "dummy")
   tags             = local.common_tags
 }
-
-resource "aws_lambda_permission" "allow_cognito" { # Dajemy Cognito uprawnienia do wywoływania naszej funkcji Lambda.
-  statement_id  = "AllowCognitoToCallLambda"    # ID tego uprawnienia.
-  action        = "lambda:InvokeFunction"       # Akcja: wywołanie funkcji Lambda.
-  function_name = aws_lambda_function.auto_confirm_user.function_name # Której funkcji dotyczy to uprawnienie.
-  principal     = "cognito-idp.amazonaws.com"   # Kto może wywołać? Usługa Cognito.
-  source_arn    = aws_cognito_user_pool.chat_pool.arn # Z której puli użytkowników Cognito może przyjść wywołanie.
+resource "aws_lambda_permission" "allow_cognito" {
+  statement_id  = "AllowCognitoToCallLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.auto_confirm_user.function_name
+  principal     = "cognito-idp.amazonaws.com"
+  source_arn    = aws_cognito_user_pool.chat_pool.arn
 }
 
-# --- Aplikacja Elastic Beanstalk dla frontendu ---
-resource "aws_elastic_beanstalk_application" "frontend_app" { # Tworzymy aplikację Elastic Beanstalk (kontener na środowiska).
-  name        = "${local.project_name}-frontend-app"       # Nazwa aplikacji.
-  description = "Frontend for Projekt Chmury V2"           # Opis.
-  tags        = local.common_tags
-}
-
-# nie korzystałem z tego (zostało z poprzedniego main.tf)
-# V
-locals { # Lokalna zmienna do przechowywania zawartości pliku Dockerrun.aws.json.
-  frontend_dockerrun_content = jsonencode({ # Konwertujemy mapę na string JSON.
-    AWSEBDockerrunVersion = "1",            # Wersja formatu Dockerrun.
-    Image = {
-      Name   = "${aws_ecr_repository.frontend_repo.repository_url}:${var.frontend_image_tag}", # Adres obrazu Docker frontendu w ECR.
-      Update = "true"                       # Czy Elastic Beanstalk ma próbować aktualizować obraz przy wdrożeniu?
-    },
-    Ports = [                               # Mapowanie portów dla kontenera frontendu.
-      {
-        ContainerPort = 3000                # Kontener frontendu nasłuchuje na porcie 3000.
-      }
+# --- Polityki IAM dla Lambd i Notification Service ---
+resource "aws_iam_policy" "lambda_chat_policy" {
+  name        = "${local.project_name}-lambda-chat-policy"
+  description = "Policy for Chat Lambda functions"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      { Effect = "Allow", Action = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"], Resource = "arn:aws:logs:*:*:*" },
+      { Effect = "Allow", Action = "sqs:SendMessage", Resource = aws_sqs_queue.chat_notifications_queue.arn },
+      { Effect = "Allow", Action = ["ec2:CreateNetworkInterface", "ec2:DescribeNetworkInterfaces", "ec2:DeleteNetworkInterface", "ec2:AssignPrivateIpAddresses", "ec2:UnassignPrivateIpAddresses"], Resource = "*" }
     ]
   })
 }
 
-resource "aws_s3_object" "frontend_dockerrun" { # Wrzucamy plik Dockerrun.aws.json do bucketu S3. Elastic Beanstalk go stamtąd pobierze.
-  bucket  = aws_s3_bucket.upload_bucket.bucket # Do którego bucketu.
-  key     = "Dockerrun.aws.json.${random_string.suffix.result}" # Nazwa pliku w buckecie (z losową końcówką, żeby był unikalny).
-  content = local.frontend_dockerrun_content   # Zawartość pliku (nasz JSON zdefiniowany powyżej).
-  etag    = md5(local.frontend_dockerrun_content) # Skrót MD5 zawartości, żeby Terraform wiedział, czy plik się zmienił.
+resource "aws_iam_policy" "notification_service_sqs_policy" {
+  name        = "${local.project_name}-notification-service-sqs-policy"
+  description = "Allows Notification Service to read from SQS queue"
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [{ Effect = "Allow", Action = ["sqs:ReceiveMessage", "sqs:DeleteMessage", "sqs:GetQueueAttributes"], Resource = aws_sqs_queue.chat_notifications_queue.arn }]
+  })
+}
+# resource "aws_iam_role_policy_attachment" "notification_service_sqs_attach_to_lab_role" {
+#   role       = split("/", var.lab_role_arn)[1]
+#   policy_arn = aws_iam_policy.notification_service_sqs_policy.arn
+# }
+
+# --- Definicje funkcji Lambda dla logiki czatu ---
+resource "aws_lambda_function" "send_message_lambda" {
+  function_name = "${local.project_name}-SendMessageLambda"
+  handler       = "pl.projektchmury.chatapp.lambda.SendMessageLambda::handleRequest"
+  role          = var.lab_role_arn
+  runtime       = "java17"
+  memory_size   = 512
+  timeout       = 30
+  s3_bucket     = aws_s3_bucket.lambda_code_bucket.id
+  s3_key        = var.lambda_chat_handlers_jar_key
+  environment { variables = local.chat_lambda_common_environment_variables }
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+  }
+  tags = local.common_tags
+}
+resource "aws_lambda_function" "get_sent_messages_lambda" {
+  function_name = "${local.project_name}-GetSentMessagesLambda"
+  handler       = "pl.projektchmury.chatapp.lambda.GetSentMessagesLambda::handleRequest"
+  role          = var.lab_role_arn
+  runtime       = "java17"
+  memory_size   = 256
+  timeout       = 20
+  s3_bucket     = aws_s3_bucket.lambda_code_bucket.id
+  s3_key        = var.lambda_chat_handlers_jar_key
+  environment { variables = local.chat_lambda_common_environment_variables }
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+  }
+  tags = local.common_tags
+}
+resource "aws_lambda_function" "get_received_messages_lambda" {
+  function_name = "${local.project_name}-GetReceivedMessagesLambda"
+  handler       = "pl.projektchmury.chatapp.lambda.GetReceivedMessagesLambda::handleRequest"
+  role          = var.lab_role_arn
+  runtime       = "java17"
+  memory_size   = 256
+  timeout       = 20
+  s3_bucket     = aws_s3_bucket.lambda_code_bucket.id
+  s3_key        = var.lambda_chat_handlers_jar_key
+  environment { variables = local.chat_lambda_common_environment_variables }
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+  }
+  tags = local.common_tags
+}
+resource "aws_lambda_function" "mark_message_as_read_lambda" {
+  function_name = "${local.project_name}-MarkMessageAsReadLambda"
+  handler       = "pl.projektchmury.chatapp.lambda.MarkMessageAsReadLambda::handleRequest"
+  role          = var.lab_role_arn
+  runtime       = "java17"
+  memory_size   = 256
+  timeout       = 20
+  s3_bucket     = aws_s3_bucket.lambda_code_bucket.id
+  s3_key        = var.lambda_chat_handlers_jar_key
+  environment { variables = local.chat_lambda_common_environment_variables }
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+  }
+  tags = local.common_tags
 }
 
-resource "aws_elastic_beanstalk_application_version" "frontend_app_version" { # Tworzymy wersję aplikacji Elastic Beanstalk.
-  name        = "${local.project_name}-frontend-v1-${random_string.suffix.result}" # Nazwa wersji.
-  application = aws_elastic_beanstalk_application.frontend_app.name             # Do której aplikacji należy ta wersja.
-  bucket      = aws_s3_bucket.upload_bucket.bucket                              # Bucket S3, gdzie jest plik Dockerrun.aws.json.
-  key         = aws_s3_object.frontend_dockerrun.key                            # Klucz (nazwa) pliku Dockerrun.aws.json w buckecie.
-  description = "Frontend application version from ECR"                         # Opis wersji.
+# --- API Gateway dla funkcji Lambda czatu ---
+resource "aws_api_gateway_rest_api" "chat_api" {
+  name        = "${local.project_name}-ChatApi"
+  description = "API Gateway for Chat Lambdas"
+  tags        = local.common_tags
+  endpoint_configuration { types = ["REGIONAL"] }
 }
-# ^ #####
+resource "aws_api_gateway_authorizer" "cognito_authorizer_for_chat_api" {
+  name                              = "${local.project_name}-CognitoChatAuthorizer"
+  rest_api_id                       = aws_api_gateway_rest_api.chat_api.id
+  type                              = "COGNITO_USER_POOLS"
+  provider_arns                     = [aws_cognito_user_pool.chat_pool.arn]
+  identity_source                   = "method.request.header.Authorization"
+  authorizer_result_ttl_in_seconds  = 300
+}
 
-resource "aws_elastic_beanstalk_environment" "frontend_env" { # Tworzymy środowisko Elastic Beanstalk, które uruchomi nasz frontend.
-  name                = "${local.project_name}-frontend-env"       # Nazwa środowiska.
-  application         = aws_elastic_beanstalk_application.frontend_app.name # Do której aplikacji należy to środowisko.
-  solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker" # Platforma, na której uruchomimy aplikację (Docker na Amazon Linux 2023).
-  version_label       = aws_elastic_beanstalk_application_version.frontend_app_version.name # Którą wersję aplikacji wdrożyć.
+# Zasoby i Metody API Gateway
+resource "aws_api_gateway_resource" "messages_resource" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  parent_id   = aws_api_gateway_rest_api.chat_api.root_resource_id
+  path_part   = "messages"
+}
+resource "aws_api_gateway_method" "send_message_post_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_resource.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito_authorizer_for_chat_api.id
+}
+resource "aws_api_gateway_integration" "send_message_lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.chat_api.id
+  resource_id             = aws_api_gateway_resource.messages_resource.id
+  http_method             = aws_api_gateway_method.send_message_post_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.send_message_lambda.invoke_arn
+}
+resource "aws_lambda_permission" "apigw_lambda_send_message" {
+  statement_id  = "AllowAPIGatewayInvokeSendMessageLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.send_message_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.chat_api.execution_arn}/*/${aws_api_gateway_method.send_message_post_method.http_method}${aws_api_gateway_resource.messages_resource.path}"
+}
+resource "aws_api_gateway_resource" "messages_sent_resource" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  parent_id   = aws_api_gateway_resource.messages_resource.id
+  path_part   = "sent"
+}
+resource "aws_api_gateway_method" "get_sent_messages_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_sent_resource.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito_authorizer_for_chat_api.id
+  request_parameters = { "method.request.querystring.username" = true }
+}
+resource "aws_api_gateway_integration" "get_sent_messages_lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.chat_api.id
+  resource_id             = aws_api_gateway_resource.messages_sent_resource.id
+  http_method             = aws_api_gateway_method.get_sent_messages_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.get_sent_messages_lambda.invoke_arn
+}
+resource "aws_lambda_permission" "apigw_lambda_get_sent_messages" {
+  statement_id  = "AllowAPIGatewayInvokeGetSentMessagesLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.get_sent_messages_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.chat_api.execution_arn}/*/${aws_api_gateway_method.get_sent_messages_method.http_method}${aws_api_gateway_resource.messages_sent_resource.path}"
+}
+resource "aws_api_gateway_resource" "messages_received_resource" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  parent_id   = aws_api_gateway_resource.messages_resource.id
+  path_part   = "received"
+}
+resource "aws_api_gateway_method" "get_received_messages_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_received_resource.id
+  http_method   = "GET"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito_authorizer_for_chat_api.id
+  request_parameters = { "method.request.querystring.username" = true }
+}
+resource "aws_api_gateway_integration" "get_received_messages_lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.chat_api.id
+  resource_id             = aws_api_gateway_resource.messages_received_resource.id
+  http_method             = aws_api_gateway_method.get_received_messages_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.get_received_messages_lambda.invoke_arn
+}
+resource "aws_lambda_permission" "apigw_lambda_get_received_messages" {
+  statement_id  = "AllowAPIGatewayInvokeGetReceivedMessagesLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.get_received_messages_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.chat_api.execution_arn}/*/${aws_api_gateway_method.get_received_messages_method.http_method}${aws_api_gateway_resource.messages_received_resource.path}"
+}
+resource "aws_api_gateway_resource" "message_id_resource" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  parent_id   = aws_api_gateway_resource.messages_resource.id
+  path_part   = "{messageId}"
+}
+resource "aws_api_gateway_resource" "mark_as_read_resource" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  parent_id   = aws_api_gateway_resource.message_id_resource.id
+  path_part   = "mark-as-read"
+}
+resource "aws_api_gateway_method" "mark_as_read_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.mark_as_read_resource.id
+  http_method   = "POST"
+  authorization = "COGNITO_USER_POOLS"
+  authorizer_id = aws_api_gateway_authorizer.cognito_authorizer_for_chat_api.id
+  request_parameters = { "method.request.path.messageId" = true }
+}
+resource "aws_api_gateway_integration" "mark_as_read_lambda_integration" {
+  rest_api_id             = aws_api_gateway_rest_api.chat_api.id
+  resource_id             = aws_api_gateway_resource.mark_as_read_resource.id
+  http_method             = aws_api_gateway_method.mark_as_read_method.http_method
+  integration_http_method = "POST"
+  type                    = "AWS_PROXY"
+  uri                     = aws_lambda_function.mark_message_as_read_lambda.invoke_arn
+}
+resource "aws_lambda_permission" "apigw_lambda_mark_as_read" {
+  statement_id  = "AllowAPIGatewayInvokeMarkAsReadLambda"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.mark_message_as_read_lambda.function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_api_gateway_rest_api.chat_api.execution_arn}/*/${aws_api_gateway_method.mark_as_read_method.http_method}${aws_api_gateway_resource.mark_as_read_resource.path}"
+}
 
-  # Ustawienia (zmienne środowiskowe) dla aplikacji frontendowej.
+# Metody OPTIONS dla CORS
+resource "aws_api_gateway_method" "messages_options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "messages_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_resource.id
+  http_method = aws_api_gateway_method.messages_options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+resource "aws_api_gateway_method_response" "messages_options_200" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_resource.id
+  http_method   = aws_api_gateway_method.messages_options_method.http_method
+  status_code   = "200"
+  response_models = {
+    "application/json" = "Empty"
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+resource "aws_api_gateway_integration_response" "messages_options_integration_response_200" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_resource.id
+  http_method = aws_api_gateway_method.messages_options_method.http_method
+  status_code = aws_api_gateway_method_response.messages_options_200.status_code # Powinno być "200"
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'" # Metody dozwolone na /messages i jego podzasobach
+    # "method.response.header.Access-Control-Allow-Origin"  = "'http://${aws_elastic_beanstalk_environment.frontend_env.cname}'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = "" # Dla MOCK, może być puste
+  }
+  depends_on = [aws_api_gateway_integration.messages_options_integration]
+}
+# Dla zasobu /messages/sent
+resource "aws_api_gateway_method" "messages_sent_options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_sent_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "messages_sent_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_sent_resource.id
+  http_method = aws_api_gateway_method.messages_sent_options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+
+resource "aws_api_gateway_method_response" "messages_sent_options_200" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_sent_resource.id
+  http_method   = aws_api_gateway_method.messages_sent_options_method.http_method
+  status_code   = "200"
+  response_models = {
+    "application/json" = "Empty"
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+resource "aws_api_gateway_integration_response" "messages_sent_options_integration_response_200" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_sent_resource.id
+  http_method = aws_api_gateway_method.messages_sent_options_method.http_method
+  status_code = aws_api_gateway_method_response.messages_sent_options_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    # "method.response.header.Access-Control-Allow-Origin"  = "'http://${aws_elastic_beanstalk_environment.frontend_env.cname}'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.messages_sent_options_integration]
+}
+# Dla zasobu /messages/received
+resource "aws_api_gateway_method" "messages_received_options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_received_resource.id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "messages_received_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_received_resource.id
+  http_method = aws_api_gateway_method.messages_received_options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+resource "aws_api_gateway_method_response" "messages_received_options_200" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.messages_received_resource.id
+  http_method   = aws_api_gateway_method.messages_received_options_method.http_method
+  status_code   = "200"
+  response_models = {
+    "application/json" = "Empty"
+  }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+resource "aws_api_gateway_integration_response" "messages_received_options_integration_response_200" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_received_resource.id
+  http_method = aws_api_gateway_method.messages_received_options_method.http_method
+  status_code = aws_api_gateway_method_response.messages_received_options_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'GET,OPTIONS'"
+    # "method.response.header.Access-Control-Allow-Origin"  = "'http://${aws_elastic_beanstalk_environment.frontend_env.cname}'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.messages_received_options_integration]
+}
+
+resource "aws_api_gateway_method" "mark_as_read_options_method" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.mark_as_read_resource.id # Upewnij się, że to poprawny resource_id
+  http_method   = "OPTIONS"
+  authorization = "NONE"
+}
+
+resource "aws_api_gateway_integration" "mark_as_read_options_integration" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.mark_as_read_resource.id # Upewnij się, że to poprawny resource_id
+  http_method = aws_api_gateway_method.mark_as_read_options_method.http_method
+  type        = "MOCK"
+  request_templates = {
+    "application/json" = "{\"statusCode\": 200}"
+  }
+}
+resource "aws_api_gateway_method_response" "mark_as_read_options_200" {
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  resource_id   = aws_api_gateway_resource.mark_as_read_resource.id
+  http_method   = aws_api_gateway_method.mark_as_read_options_method.http_method
+  status_code   = "200"
+  response_models = { "application/json" = "Empty" }
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = true,
+    "method.response.header.Access-Control-Allow-Methods" = true,
+    "method.response.header.Access-Control-Allow-Origin"  = true
+  }
+}
+resource "aws_api_gateway_integration_response" "mark_as_read_options_integration_response_200" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.mark_as_read_resource.id
+  http_method = aws_api_gateway_method.mark_as_read_options_method.http_method
+  status_code = aws_api_gateway_method_response.mark_as_read_options_200.status_code
+
+  response_parameters = {
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
+    # "method.response.header.Access-Control-Allow-Origin"  = "'http://${aws_elastic_beanstalk_environment.frontend_env.cname}'"
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  response_templates = {
+    "application/json" = ""
+  }
+  depends_on = [aws_api_gateway_integration.mark_as_read_options_integration]
+}
+# Deployment i Stage API Gateway
+resource "aws_api_gateway_deployment" "chat_api_deployment" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  triggers = {
+    redeployment = sha1(jsonencode([
+      aws_api_gateway_resource.messages_resource.id,
+      aws_api_gateway_method.send_message_post_method.id,
+      aws_api_gateway_integration.send_message_lambda_integration.id,
+      aws_api_gateway_resource.messages_sent_resource.id,
+      aws_api_gateway_method.get_sent_messages_method.id,
+      aws_api_gateway_integration.get_sent_messages_lambda_integration.id,
+      aws_api_gateway_resource.messages_received_resource.id,
+      aws_api_gateway_method.get_received_messages_method.id,
+      aws_api_gateway_integration.get_received_messages_lambda_integration.id,
+      aws_api_gateway_resource.message_id_resource.id,
+      aws_api_gateway_resource.mark_as_read_resource.id,
+      aws_api_gateway_method.mark_as_read_method.id,
+      aws_api_gateway_integration.mark_as_read_lambda_integration.id,
+      # Metody OPTIONS
+      aws_api_gateway_method.messages_options_method.id,
+      aws_api_gateway_integration.messages_options_integration.id,
+      aws_api_gateway_integration_response.messages_options_integration_response_200.id, # DODANE
+      aws_api_gateway_method.messages_sent_options_method.id,
+      aws_api_gateway_integration.messages_sent_options_integration.id,
+      aws_api_gateway_integration_response.messages_sent_options_integration_response_200.id, # DODANE
+      aws_api_gateway_method.messages_received_options_method.id,
+      aws_api_gateway_integration.messages_received_options_integration.id,
+      aws_api_gateway_integration_response.messages_received_options_integration_response_200.id, # DODANE
+      aws_api_gateway_method.mark_as_read_options_method.id,
+      aws_api_gateway_integration.mark_as_read_options_integration.id,
+      aws_api_gateway_integration_response.mark_as_read_options_integration_response_200.id # DODANE
+    ]))
+  }
+  lifecycle { create_before_destroy = true }
+  depends_on = [
+    aws_api_gateway_integration.send_message_lambda_integration,
+    aws_api_gateway_integration.get_sent_messages_lambda_integration,
+    aws_api_gateway_integration.get_received_messages_lambda_integration,
+    aws_api_gateway_integration.mark_as_read_lambda_integration,
+    aws_api_gateway_integration.messages_options_integration,
+    aws_api_gateway_integration.messages_sent_options_integration,
+    aws_api_gateway_integration.messages_received_options_integration,
+    aws_api_gateway_integration.mark_as_read_options_integration
+  ]
+}
+resource "aws_api_gateway_stage" "chat_api_stage_v1" {
+  deployment_id = aws_api_gateway_deployment.chat_api_deployment.id
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  stage_name    = "v1"
+  tags          = local.common_tags
+  # Zakomentowane logowanie, aby uniknąć błędu konfiguracji na koncie
+  # access_log_settings {
+  #   destination_arn = aws_cloudwatch_log_group.api_gateway_chat_logs.arn
+  #   format          = jsonencode({ /* ... format ... */ })
+  # }
+}
+# Zakomentowane, aby uniknąć błędu, jeśli nie można skonfigurować roli dla logów API GW
+# resource "aws_cloudwatch_log_group" "api_gateway_chat_logs" {
+#   name              = "/aws/api-gateway/${local.project_name}-ChatApi-v1"
+#   retention_in_days = 7
+#   tags              = local.common_tags
+# }
+
+# --- Aplikacja Elastic Beanstalk dla frontendu ---
+resource "aws_elastic_beanstalk_application" "frontend_app" {
+  name        = "${local.project_name}-frontend-app"
+  description = "Frontend for Projekt Chmury V2"
+  tags        = local.common_tags
+}
+locals {
+  frontend_dockerrun_content = jsonencode({
+    AWSEBDockerrunVersion = "1",
+    Image = { Name = "${aws_ecr_repository.frontend_repo.repository_url}:${var.frontend_image_tag}", Update = "true" },
+    Ports = [{ ContainerPort = 3000 }]
+  })
+}
+resource "aws_s3_object" "frontend_dockerrun" {
+  bucket  = aws_s3_bucket.upload_bucket.id
+  key     = "Dockerrun.aws.json.${random_string.suffix.result}"
+  content = local.frontend_dockerrun_content
+  etag    = md5(local.frontend_dockerrun_content)
+}
+resource "aws_elastic_beanstalk_application_version" "frontend_app_version" {
+  name        = "${local.project_name}-frontend-v1-${random_string.suffix.result}"
+  application = aws_elastic_beanstalk_application.frontend_app.name
+  bucket      = aws_s3_bucket.upload_bucket.id
+  key         = aws_s3_object.frontend_dockerrun.key
+  description = "Frontend application version from ECR"
+}
+resource "aws_elastic_beanstalk_environment" "frontend_env" {
+  name                = "${local.project_name}-frontend-env"
+  application         = aws_elastic_beanstalk_application.frontend_app.name
+  solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker"
+  version_label       = aws_elastic_beanstalk_application_version.frontend_app_version.name
+
   setting {
-    namespace = "aws:elasticbeanstalk:application:environment" # Przestrzeń nazw dla zmiennych środowiskowych aplikacji.
-    name      = "VITE_AUTH_API_URL"                            # Nazwa zmiennej.
-    value     = "http://${aws_lb.main_alb.dns_name}/api/auth"  # Wartość: adres URL serwisu autoryzacji (przez Load Balancer).
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "VITE_AUTH_API_URL"
+    value     = "http://${aws_lb.main_alb.dns_name}/api/auth"
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
     name      = "VITE_CHAT_API_URL"
-    value     = "http://${aws_lb.main_alb.dns_name}/api/messages"
+    value     = "${aws_api_gateway_stage.chat_api_stage_v1.invoke_url}/messages"
   }
   setting {
     namespace = "aws:elasticbeanstalk:application:environment"
@@ -809,85 +1159,102 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" { # Tworzymy środow
     name      = "VITE_NOTIFICATION_API_URL"
     value     = "http://${aws_lb.main_alb.dns_name}/api/notifications"
   }
-  setting { # Ustawienie profilu instancji IAM dla instancji EC2 w Elastic Beanstalk.
+  setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "IamInstanceProfile"
-    value     = var.lab_instance_profile_name # Używamy profilu z laboratorium.
-  }
-  setting { # Konfiguracja logów CloudWatch dla Elastic Beanstalk.
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "StreamLogs" # Czy przesyłać logi do CloudWatch?
-    value     = "true"       # Tak.
+    value     = var.lab_instance_profile_name
   }
   setting {
     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "DeleteOnTerminate" # Czy usuwać logi przy zakończeniu środowiska?
-    value     = "true"              # Tak.
+    name      = "StreamLogs"
+    value     = "true"
   }
   setting {
     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "RetentionInDays" # Jak długo przechowywać logi?
-    value     = "7"               # 7 dni.
+    name      = "DeleteOnTerminate"
+    value     = "true"
   }
-  wait_for_ready_timeout = "30m" # Jak długo Terraform ma czekać, aż środowisko będzie gotowe (30 minut).
+  setting {
+    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+    name      = "RetentionInDays"
+    value     = "7"
+  }
+  wait_for_ready_timeout = "30m"
   tags                   = local.common_tags
 }
-
 # --- Wyjścia (Outputs) ---
-# Te wartości będą wyświetlane po zakończeniu działania `terraform apply`. Są przydatne do uzyskania informacji o stworzonych zasobach.
 output "alb_dns_name" {
-  description = "DNS name of the Application Load Balancer" # Opis.
-  value       = aws_lb.main_alb.dns_name                   # Wartość: adres DNS naszego Load Balancera.
+  description = "DNS name of the Application Load Balancer"
+  value       = aws_lb.main_alb.dns_name
 }
 
 output "frontend_url" {
-  description = "URL of the deployed frontend application (Elastic Beanstalk)" # Opis.
-  value       = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" # Wartość: adres URL naszego frontendu.
+  description = "URL of the deployed frontend application (Elastic Beanstalk)"
+  value       = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}"
 }
 
 output "cognito_user_pool_id" {
-  description = "ID of the Cognito User Pool" # Opis.
-  value       = aws_cognito_user_pool.chat_pool.id # Wartość: ID puli użytkowników Cognito.
+  description = "ID of the Cognito User Pool"
+  value       = aws_cognito_user_pool.chat_pool.id
 }
 
 output "cognito_client_id" {
-  description = "Client ID of the Cognito User Pool Client" # Opis.
-  value       = aws_cognito_user_pool_client.chat_pool_client.id # Wartość: ID klienta aplikacji Cognito.
+  description = "Client ID of the Cognito User Pool Client"
+  value       = aws_cognito_user_pool_client.chat_pool_client.id
 }
 
 output "s3_upload_bucket_name" {
-  description = "Name of the S3 bucket for file uploads" # Opis.
-  value       = aws_s3_bucket.upload_bucket.bucket     # Wartość: nazwa naszego bucketu S3.
+  description = "Name of the S3 bucket for file uploads"
+  value       = aws_s3_bucket.upload_bucket.bucket
+}
+
+output "s3_lambda_code_bucket_name" {
+  description = "Name of the S3 bucket for Lambda function code"
+  value       = aws_s3_bucket.lambda_code_bucket.id
 }
 
 output "rds_chat_db_endpoint" {
-  description = "Endpoint address of the RDS database for chat service" # Opis.
-  value       = aws_db_instance.chat_db.address                       # Wartość: adres endpointu bazy danych RDS.
+  description = "Endpoint address of the RDS database for chat service"
+  value       = aws_db_instance.chat_db.address
 }
 
 output "rds_chat_db_name" {
-  description = "Name of the RDS database for chat service" # Opis.
-  value       = aws_db_instance.chat_db.db_name           # Wartość: nazwa bazy danych w instancji RDS.
+  description = "Name of the RDS database for chat service"
+  value       = aws_db_instance.chat_db.db_name
 }
 
 output "sns_notifications_topic_arn" {
-  description = "ARN of the SNS topic for notifications" # Opis.
-  value       = aws_sns_topic.notifications_topic.arn  # Wartość: ARN tematu SNS.
+  description = "ARN of the SNS topic for notifications"
+  value       = aws_sns_topic.notifications_topic.arn
 }
 
-# Wyjścia dla adresów URL repozytoriów ECR (przydatne przy budowaniu i wypychaniu obrazów Docker w skrypcie deploy.sh).
+output "sqs_chat_notifications_queue_url" {
+  description = "URL of the SQS queue for chat notifications"
+  value       = aws_sqs_queue.chat_notifications_queue.id
+}
+
+output "sqs_chat_notifications_queue_arn" {
+  description = "ARN of the SQS queue for chat notifications"
+  value       = aws_sqs_queue.chat_notifications_queue.arn
+}
+
+output "api_gateway_chat_invoke_url" {
+  description = "Invoke URL for the Chat API Gateway (stage v1)"
+  value       = aws_api_gateway_stage.chat_api_stage_v1.invoke_url
+}
+
 output "ecr_auth_service_repo_url" {
   value = aws_ecr_repository.auth_service_repo.repository_url
 }
-output "ecr_chat_service_repo_url" {
-  value = aws_ecr_repository.chat_service_repo.repository_url
-}
+
 output "ecr_file_service_repo_url" {
   value = aws_ecr_repository.file_service_repo.repository_url
 }
+
 output "ecr_notification_service_repo_url" {
   value = aws_ecr_repository.notification_service_repo.repository_url
 }
+
 output "ecr_frontend_repo_url" {
   value = aws_ecr_repository.frontend_repo.repository_url
 }

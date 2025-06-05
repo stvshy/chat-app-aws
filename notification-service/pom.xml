@@ -29,6 +29,13 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <dependency>
+                <groupId>io.awspring.cloud</groupId>
+                <artifactId>spring-cloud-aws-dependencies</artifactId>
+                <version>3.1.1</version> <!-- Sprawdź najnowszą wersję Spring Cloud AWS -->
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
         </dependencies>
     </dependencyManagement>
 
@@ -56,6 +63,18 @@
         <dependency>
             <groupId>software.amazon.awssdk</groupId>
             <artifactId>dynamodb-enhanced</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sqs</artifactId>
+            <!-- Wersja powinna być zarządzana przez aws-java-sdk-bom lub zdefiniowana w properties -->
+            <!-- <version>${aws.java.sdk.version}</version> -->
+        </dependency>
+        <!-- notification-service/pom.xml -->
+        <dependency>
+            <groupId>io.awspring.cloud</groupId>
+            <artifactId>spring-cloud-aws-starter-sqs</artifactId>
+            <!-- Wersję najlepiej wziąć z BOM Spring Cloud AWS -->
         </dependency>
         <dependency>
             <groupId>org.projectlombok</groupId>

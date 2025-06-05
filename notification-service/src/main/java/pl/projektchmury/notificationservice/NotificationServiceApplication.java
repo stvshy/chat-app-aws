@@ -2,6 +2,9 @@ package pl.projektchmury.notificationservice;
 
 import org.springframework.boot.SpringApplication; // Główna klasa do uruchamiania aplikacji Spring Boot
 import org.springframework.boot.autoconfigure.SpringBootApplication; // Kluczowa adnotacja, która włącza auto-konfigurację, skanowanie komponentów itp.
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
+import org.springframework.context.annotation.Bean;
 
 @SpringBootApplication // Ta adnotacja to skrót dla kilku innych, w tym:
 // @Configuration: Oznacza klasę jako źródło definicji beanów.
@@ -16,5 +19,13 @@ public class NotificationServiceApplication {
         // SpringApplication.run(...) tworzy kontekst aplikacji Springa, zarządza cyklem życia beanów
         // i uruchamia wbudowany serwer (np. Tomcat), jeśli to aplikacja webowa.
         SpringApplication.run(NotificationServiceApplication.class, args);
+    }
+
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule()); // Dla obsługi Java Time API
+        // Inne konfiguracje ObjectMappera, jeśli potrzebne
+        return objectMapper;
     }
 }

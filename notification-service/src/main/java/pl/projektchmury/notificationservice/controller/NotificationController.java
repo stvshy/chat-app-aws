@@ -54,41 +54,41 @@ public class NotificationController {
         List<NotificationRecord> history = notificationService.getNotificationHistory(requestingUserNick);
         return ResponseEntity.ok(history);
     }
-
-    @PostMapping("/send")
-    public ResponseEntity<NotificationRecord> createNotification(
-            @RequestBody Map<String, String> payload,
-            @AuthenticationPrincipal Jwt jwt
-    ) {
-        if (jwt == null) {
-            logger.warn("Niezautoryzowane żądanie do /api/notifications/send");
-            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
-        }
-
-        String targetUserIdFromPayload = payload.get("targetUserId");
-        String type = payload.getOrDefault("type", "UNDEFINED");
-        String subject = payload.get("subject");
-        String message = payload.get("message");
-        String relatedEntityId = payload.get("relatedEntityId");
-
-        if (targetUserIdFromPayload == null || targetUserIdFromPayload.isEmpty() ||
-                message == null || message.isEmpty()) {
-            logger.warn("Brakujące dane w payloadzie dla /send: targetUserId={}, message={}", targetUserIdFromPayload, message);
-            return ResponseEntity.badRequest().body(null); // Zwracamy null jako ciało dla NotificationRecord
-        }
-
-        logger.info("Odebrano żądanie utworzenia powiadomienia dla targetUserId: {}, type: {}, subject: {}, message: {}, relatedEntityId: {}. Zainicjowane przez użytkownika z tokenu (sub): {}",
-                targetUserIdFromPayload, type, subject, message, relatedEntityId, jwt.getSubject());
-
-        NotificationRecord record = notificationService.sendAndStoreNotification(
-                targetUserIdFromPayload,
-                type,
-                subject,
-                message,
-                relatedEntityId
-        );
-        return ResponseEntity.ok(record);
-    }
+//
+//    @PostMapping("/send")
+//    public ResponseEntity<NotificationRecord> createNotification(
+//            @RequestBody Map<String, String> payload,
+//            @AuthenticationPrincipal Jwt jwt
+//    ) {
+//        if (jwt == null) {
+//            logger.warn("Niezautoryzowane żądanie do /api/notifications/send");
+//            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+//        }
+//
+//        String targetUserIdFromPayload = payload.get("targetUserId");
+//        String type = payload.getOrDefault("type", "UNDEFINED");
+//        String subject = payload.get("subject");
+//        String message = payload.get("message");
+//        String relatedEntityId = payload.get("relatedEntityId");
+//
+//        if (targetUserIdFromPayload == null || targetUserIdFromPayload.isEmpty() ||
+//                message == null || message.isEmpty()) {
+//            logger.warn("Brakujące dane w payloadzie dla /send: targetUserId={}, message={}", targetUserIdFromPayload, message);
+//            return ResponseEntity.badRequest().body(null); // Zwracamy null jako ciało dla NotificationRecord
+//        }
+//
+//        logger.info("Odebrano żądanie utworzenia powiadomienia dla targetUserId: {}, type: {}, subject: {}, message: {}, relatedEntityId: {}. Zainicjowane przez użytkownika z tokenu (sub): {}",
+//                targetUserIdFromPayload, type, subject, message, relatedEntityId, jwt.getSubject());
+//
+//        NotificationRecord record = notificationService.sendAndStoreNotification(
+//                targetUserIdFromPayload,
+//                type,
+//                subject,
+//                message,
+//                relatedEntityId
+//        );
+//        return ResponseEntity.ok(record);
+//    }
 
     @PostMapping("/{notificationId}/mark-as-read")
     public ResponseEntity<?> markNotificationAsRead( // Zmieniono na ResponseEntity<?> aby obsłużyć różne typy odpowiedzi
