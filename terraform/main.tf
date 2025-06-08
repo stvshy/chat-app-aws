@@ -1,3 +1,18 @@
+terraform {
+  required_providers {
+    # Używamy dostawcy AWS do tworzenia zasobów AWS
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+    # Używamy dostawcy random do generowania losowych ciągów znaków
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.0"
+    }
+  }
+}
+
 # --- Konfiguracja dostawcy AWS ---
 provider "aws" {
   region = "us-east-1"
@@ -1044,6 +1059,59 @@ resource "aws_api_gateway_integration_response" "mark_as_read_options_integratio
   }
   depends_on = [aws_api_gateway_integration.mark_as_read_options_integration]
 }
+
+# --- DB Schema Initializer Lambda ---
+
+# Zmienna dla klucza S3 dla JARa inicjalizatora
+variable "db_initializer_jar_key" {
+  description = "S3 key for the DB Initializer Lambda JAR file"
+  type        = string
+  default     = "db-initializer-lambda.jar"
+}
+
+# Definicja funkcji Lambda do inicjalizacji schematu DB
+resource "aws_lambda_function" "db_initializer_lambda" {
+  # Upewnij się, że ta funkcja jest tworzona dopiero po utworzeniu bazy danych
+  depends_on = [aws_db_instance.chat_db]
+
+  function_name = "${local.project_name}-DbSchemaInitializer"
+  handler       = "pl.projektchmury.dbinitializer.SchemaInitializerLambda::handleRequest"
+  role          = var.lab_role_arn
+  runtime       = "java17"
+  memory_size   = 1024
+  timeout       = 300 # Dajemy więcej czasu na zimny start i połączenie z DB
+  s3_bucket     = aws_s3_bucket.lambda_code_bucket.id
+  s3_key        = var.db_initializer_jar_key
+
+  # Używamy tych samych zmiennych środowiskowych co inne Lambdy czatu
+  environment {
+    variables = local.chat_lambda_common_environment_variables
+  }
+
+  # Ta funkcja również musi być w VPC, aby połączyć się z RDS
+  vpc_config {
+    subnet_ids         = data.aws_subnets.default.ids
+    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+  }
+
+  tags = local.common_tags
+}
+
+
+# resource "null_resource" "invoke_db_initializer" {
+#   # Ta sekcja będzie wykonana tylko wtedy, gdy zmieni się ARN bazy danych (czyli przy jej tworzeniu)
+#   triggers = {
+#     db_instance_arn = aws_db_instance.chat_db.arn
+#   }
+#
+#   # Wywołaj funkcję Lambda
+#   provisioner "local-exec" {
+#     # Użycie podwójnych cudzysłowów jest bardziej kompatybilne z Windows/MINGW64
+#     command = "aws lambda invoke --function-name ${aws_lambda_function.db_initializer_lambda.function_name} --payload \"{}\" --cli-binary-format raw-in-base64-out out.json"
+#   }
+#   # Upewnij się, że provisioner jest uruchamiany po utworzeniu funkcji Lambda
+#   depends_on = [aws_lambda_function.db_initializer_lambda]
+# }
 # Deployment i Stage API Gateway
 resource "aws_api_gateway_deployment" "chat_api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.chat_api.id
@@ -1257,4 +1325,8 @@ output "ecr_notification_service_repo_url" {
 
 output "ecr_frontend_repo_url" {
   value = aws_ecr_repository.frontend_repo.repository_url
+}
+output "db_initializer_lambda_function_name" {
+  description = "The name of the DB schema initializer Lambda function"
+  value       = aws_lambda_function.db_initializer_lambda.function_name
 }

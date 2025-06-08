@@ -1,26 +1,34 @@
 #!/bin/bash
 
-set -e # Jeśli jakakolwiek komenda w skrypcie zakończy się błędem (zwróci status inny niż 0),
-       # cały skrypt natychmiast się zakończy. To pomaga szybko wykryć problemy.
+set -e
 
 # --- Konfiguracja ---
 AWS_ACCOUNT_ID="044902896603"
 AWS_REGION="us-east-1"
 PROJECT_NAME_PREFIX="projekt-chmury-v2"
 
-# Tagi obrazów Docker i wersja JAR dla Lambda
-FRONTEND_TAG="v1.0.17"
+# Tagi obrazów Docker i wersje JAR dla Lambda
+FRONTEND_TAG="v1.0.19" # Zwiększ wersję, jeśli coś zmieniałeś
 AUTH_SERVICE_TAG="v1.0.19"
 FILE_SERVICE_TAG="v1.0.17"
 NOTIFICATION_SERVICE_TAG="v1.0.17"
 
+# Wersje JAR
 LAMBDA_CHAT_HANDLERS_JAR_VERSION="1.0.0"
+LAMBDA_DB_INITIALIZER_JAR_VERSION="1.0.0" # NOWA ZMIENNA
+
+# Nazwy plików JAR
 LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME="chat-lambda-handlers-${LAMBDA_CHAT_HANDLERS_JAR_VERSION}.jar"
+LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME="db-initializer-lambda-${LAMBDA_DB_INITIALIZER_JAR_VERSION}.jar" # NOWA ZMIENNA
+
+# Klucze S3 (zgodne ze zmiennymi w Terraform)
 LAMBDA_CHAT_HANDLERS_S3_KEY="chat-lambda-handlers.jar"
+LAMBDA_DB_INITIALIZER_S3_KEY="db-initializer-lambda.jar" # NOWA ZMIENNA
 
 ECR_REGISTRY_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
 # --- Funkcje Pomocnicze ---
+# (funkcje login_to_ecr, build_java_service_and_docker_image, build_frontend_docker_image pozostają bez zmian)
 login_to_ecr() {
   echo "INFO: Logowanie do AWS ECR..."
   aws ecr get-login-password --region "${AWS_REGION}" | \
@@ -81,40 +89,40 @@ build_frontend_docker_image() {
   echo "INFO: Pomyślnie wypchnięto ${service_name}."
 }
 
+# ZMODYFIKOWANA FUNKCJA
 build_lambda_package() {
-  local lambda_module_path="./chat-lambda-handlers"
+  local lambda_module_path="$1"
   echo "------------------------------------------------------------------"
-  echo "INFO: Budowanie paczki JAR dla chat-lambda-handlers w ${lambda_module_path}"
+  echo "INFO: Budowanie paczki JAR dla ${lambda_module_path}"
   echo "------------------------------------------------------------------"
   if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
     (cd "${lambda_module_path}" && ./mvnw.cmd clean package)
   else
     (cd "${lambda_module_path}" && ./mvnw clean package)
   fi
-  echo "INFO: Pomyślnie zbudowano paczkę chat-lambda-handlers."
+  echo "INFO: Pomyślnie zbudowano paczkę ${lambda_module_path}."
 }
 
+# ZMODYFIKOWANA FUNKCJA
 upload_lambda_package_to_s3() {
-  local lambda_jar_path="./chat-lambda-handlers/target/${LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME}"
+  local lambda_jar_path="$1"
+  local s3_key="$2"
   local s3_bucket_name
-  local s3_key="${LAMBDA_CHAT_HANDLERS_S3_KEY}"
 
   echo "------------------------------------------------------------------"
-  echo "INFO: Wgrywanie paczki Lambda ${lambda_jar_path} do S3..."
+  echo "INFO: Wgrywanie paczki Lambda ${lambda_jar_path} do S3 jako ${s3_key}..."
   echo "------------------------------------------------------------------"
 
   s3_bucket_name=$(cd ./terraform && terraform output -raw s3_lambda_code_bucket_name)
 
   if [ -z "$s3_bucket_name" ]; then
-    echo "BŁĄD: Nie można pobrać nazwy bucketu S3 dla kodu Lambda (s3_lambda_code_bucket_name)."
-    echo "Upewnij się, że Krok 1 (terraform apply dla s3_lambda_code_bucket) został wykonany."
+    echo "BŁĄD: Nie można pobrać nazwy bucketu S3 dla kodu Lambda."
     exit 1
   fi
-  echo "INFO: Bucket S3 dla kodu Lambda: s3://${s3_bucket_name}/${s3_key}"
+  echo "INFO: Bucket S3 dla kodu Lambda: s3://${s3_bucket_name}"
 
   if [ ! -f "$lambda_jar_path" ]; then
     echo "BŁĄD: Plik JAR funkcji Lambda nie został znaleziony: ${lambda_jar_path}"
-    echo "Upewnij się, że budowanie paczki Lambda (build_lambda_package) zakończyło się pomyślnie."
     exit 1
   fi
 
@@ -126,6 +134,7 @@ upload_lambda_package_to_s3() {
 # --- Główny Skrypt ---
 
 # KROK 1: Stwórz/zapewnij istnienie repozytoriów ECR i bucketu S3 dla Lambd
+# (bez zmian)
 echo ">>> KROK 1: Tworzenie/zapewnianie istnienia repozytoriów ECR i bucketu S3 dla Lambd..."
 (
   cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
@@ -142,7 +151,7 @@ echo ">>> KROK 1: Tworzenie/zapewnianie istnienia repozytoriów ECR i bucketu S3
 echo ">>> Repozytoria ECR i bucket S3 dla Lambd powinny teraz istnieć."
 echo "------------------------------------------------------------------"
 
-# KROK 2: Zbuduj obrazy Docker i paczkę Lambda
+# KROK 2: Zbuduj obrazy Docker i paczki Lambda
 echo ">>> KROK 2: Budowanie artefaktów..."
 
 build_frontend_docker_image "${FRONTEND_TAG}"
@@ -150,15 +159,19 @@ build_java_service_and_docker_image "auth-service" "./auth-service" "${AUTH_SERV
 build_java_service_and_docker_image "file-service" "./file-service" "${FILE_SERVICE_TAG}"
 build_java_service_and_docker_image "notification-service" "./notification-service" "${NOTIFICATION_SERVICE_TAG}"
 
-build_lambda_package
+# Budowanie obu paczek Lambda
+build_lambda_package "./chat-lambda-handlers"
+build_lambda_package "./db-initializer-lambda" # NOWY KROK
 
-echo ">>> Wszystkie obrazy Docker i paczka Lambda zostały zbudowane."
+echo ">>> Wszystkie obrazy Docker i paczki Lambda zostały zbudowane."
 echo "------------------------------------------------------------------"
 
-# KROK 3: Wypchnij obrazy Docker do ECR i paczkę Lambda do S3
+# KROK 3: Wypchnij artefakty do AWS
 echo ">>> KROK 3: Wypychanie artefaktów do AWS..."
 
-upload_lambda_package_to_s3
+# Wgrywanie obu paczek Lambda do S3
+upload_lambda_package_to_s3 "./chat-lambda-handlers/target/${LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME}" "${LAMBDA_CHAT_HANDLERS_S3_KEY}"
+upload_lambda_package_to_s3 "./db-initializer-lambda/target/${LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME}" "${LAMBDA_DB_INITIALIZER_S3_KEY}" # NOWY KROK
 
 echo ">>> Wszystkie artefakty zostały wypchnięte."
 echo "------------------------------------------------------------------"
@@ -170,13 +183,13 @@ echo ">>> KROK 4: Wdrażanie/Aktualizacja pełnej infrastruktury Terraform..."
   cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
 
   echo "INFO: Stosowanie pełnej konfiguracji Terraform..."
-  # Upewnij się, że nie ma spacji po znakach '\' i że ostatnia linia -var nie ma '\'
   terraform apply -auto-approve \
     -var="frontend_image_tag=${FRONTEND_TAG}" \
     -var="auth_service_image_tag=${AUTH_SERVICE_TAG}" \
     -var="file_service_image_tag=${FILE_SERVICE_TAG}" \
     -var="notification_service_image_tag=${NOTIFICATION_SERVICE_TAG}" \
-    -var="lambda_chat_handlers_jar_key=${LAMBDA_CHAT_HANDLERS_S3_KEY}"
+    -var="lambda_chat_handlers_jar_key=${LAMBDA_CHAT_HANDLERS_S3_KEY}" \
+    -var="db_initializer_jar_key=${LAMBDA_DB_INITIALIZER_S3_KEY}" # NOWA ZMIENNA
 
   TF_APPLY_EXIT_CODE=$?
   echo "DEBUG: terraform apply w Kroku 4 zakończone z kodem: ${TF_APPLY_EXIT_CODE}"
@@ -189,6 +202,7 @@ echo ">>> Wdrożenie Terraform zakończone."
 echo "------------------------------------------------------------------"
 
 # KROK 5: Wyświetl outputy Terraform
+# (bez zmian)
 echo ">>> KROK 5: Wyniki Terraform (Outputs)..."
 (
   cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }

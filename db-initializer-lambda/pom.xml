@@ -5,75 +5,30 @@
 	<modelVersion>4.0.0</modelVersion>
 
 	<groupId>pl.projektchmury</groupId>
-	<artifactId>chat-lambda-handlers</artifactId>
+	<artifactId>db-initializer-lambda</artifactId>
 	<version>1.0.0</version>
 	<packaging>jar</packaging>
 
-	<name>Chat Lambda Handlers</name>
+	<name>DB Schema Initializer Lambda</name>
 
 	<properties>
 		<maven.compiler.source>17</maven.compiler.source>
 		<maven.compiler.target>17</maven.compiler.target>
 		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-		<aws.sdk.version>2.25.28</aws.sdk.version>
 		<aws.lambda.java.core.version>1.2.3</aws.lambda.java.core.version>
-		<aws.lambda.java.events.version>3.11.5</aws.lambda.java.events.version>
 		<postgresql.driver.version>42.7.3</postgresql.driver.version>
-		<jackson.version>2.17.1</jackson.version>
 	</properties>
 
-	<dependencyManagement>
-		<dependencies>
-			<dependency>
-				<groupId>software.amazon.awssdk</groupId>
-				<artifactId>bom</artifactId>
-				<version>${aws.sdk.version}</version>
-				<type>pom</type>
-				<scope>import</scope>
-			</dependency>
-		</dependencies>
-	</dependencyManagement>
-
 	<dependencies>
-		<!-- AWS Lambda -->
 		<dependency>
 			<groupId>com.amazonaws</groupId>
 			<artifactId>aws-lambda-java-core</artifactId>
 			<version>${aws.lambda.java.core.version}</version>
 		</dependency>
 		<dependency>
-			<groupId>com.amazonaws</groupId>
-			<artifactId>aws-lambda-java-events</artifactId>
-			<version>${aws.lambda.java.events.version}</version>
-		</dependency>
-
-		<!-- AWS SDK v2 for SQS -->
-		<dependency>
-			<groupId>software.amazon.awssdk</groupId>
-			<artifactId>sqs</artifactId>
-		</dependency>
-		<dependency>
-			<groupId>software.amazon.awssdk</groupId>
-			<artifactId>utils</artifactId>
-		</dependency>
-
-		<!-- PostgreSQL JDBC Driver -->
-		<dependency>
 			<groupId>org.postgresql</groupId>
 			<artifactId>postgresql</artifactId>
 			<version>${postgresql.driver.version}</version>
-		</dependency>
-
-		<!-- Jackson for JSON processing -->
-		<dependency>
-			<groupId>com.fasterxml.jackson.core</groupId>
-			<artifactId>jackson-databind</artifactId>
-			<version>${jackson.version}</version>
-		</dependency>
-		<dependency>
-			<groupId>com.fasterxml.jackson.datatype</groupId>
-			<artifactId>jackson-datatype-jsr310</artifactId>
-			<version>${jackson.version}</version>
 		</dependency>
 	</dependencies>
 
