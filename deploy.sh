@@ -1,220 +1,145 @@
 #!/bin/bash
-
 set -e
 
-# --- Konfiguracja ---
+# --- Konfiguracja i Funkcje (bez zmian) ---
 AWS_ACCOUNT_ID="044902896603"
 AWS_REGION="us-east-1"
 PROJECT_NAME_PREFIX="projekt-chmury-v2"
-
-# Tagi obrazów Docker i wersje JAR dla Lambda
-FRONTEND_TAG="v1.0.19" # Zwiększ wersję, jeśli coś zmieniałeś
+FRONTEND_TAG="v1.0.19"
 AUTH_SERVICE_TAG="v1.0.19"
 FILE_SERVICE_TAG="v1.0.17"
 NOTIFICATION_SERVICE_TAG="v1.0.17"
-
-# Wersje JAR
 LAMBDA_CHAT_HANDLERS_JAR_VERSION="1.0.0"
-LAMBDA_DB_INITIALIZER_JAR_VERSION="1.0.0" # NOWA ZMIENNA
-
-# Nazwy plików JAR
+LAMBDA_DB_INITIALIZER_JAR_VERSION="1.0.0"
 LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME="chat-lambda-handlers-${LAMBDA_CHAT_HANDLERS_JAR_VERSION}.jar"
-LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME="db-initializer-lambda-${LAMBDA_DB_INITIALIZER_JAR_VERSION}.jar" # NOWA ZMIENNA
-
-# Klucze S3 (zgodne ze zmiennymi w Terraform)
+LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME="db-initializer-lambda-${LAMBDA_DB_INITIALIZER_JAR_VERSION}.jar"
 LAMBDA_CHAT_HANDLERS_S3_KEY="chat-lambda-handlers.jar"
-LAMBDA_DB_INITIALIZER_S3_KEY="db-initializer-lambda.jar" # NOWA ZMIENNA
-
+LAMBDA_DB_INITIALIZER_S3_KEY="db-initializer-lambda.jar"
 ECR_REGISTRY_URL="${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
 
-# --- Funkcje Pomocnicze ---
-# (funkcje login_to_ecr, build_java_service_and_docker_image, build_frontend_docker_image pozostają bez zmian)
 login_to_ecr() {
   echo "INFO: Logowanie do AWS ECR..."
-  aws ecr get-login-password --region "${AWS_REGION}" | \
-  docker login --username AWS --password-stdin "${ECR_REGISTRY_URL}"
+  aws ecr get-login-password --region "${AWS_REGION}" | docker login --username AWS --password-stdin "${ECR_REGISTRY_URL}"
   echo "INFO: Logowanie do ECR zakończone pomyślnie."
 }
-
 build_java_service_and_docker_image() {
   local service_name="$1"
   local service_path="$2"
   local image_tag="$3"
-  local ecr_repo_name_suffix="$1"
-  local full_image_name="${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/${ecr_repo_name_suffix}:${image_tag}"
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Budowanie serwisu Java: ${service_name} w ${service_path}"
-  echo "------------------------------------------------------------------"
+  local full_image_name="${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/${service_name}:${image_tag}"
+  echo "--- Budowanie serwisu Java: ${service_name} ---"
   if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
     (cd "${service_path}" && ./mvnw.cmd clean package -DskipTests)
   else
     (cd "${service_path}" && ./mvnw clean package -DskipTests)
   fi
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Budowanie obrazu Docker dla ${service_name} z tagiem ${image_tag}"
-  echo "INFO: Nazwa obrazu: ${full_image_name}"
-  echo "------------------------------------------------------------------"
+  echo "--- Budowanie obrazu Docker dla ${service_name} ---"
   docker build -t "${full_image_name}" "${service_path}"
-
-  login_to_ecr
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Wypychanie obrazu ${service_name} do ECR: ${full_image_name}"
-  echo "------------------------------------------------------------------"
-  docker push "${full_image_name}"
-  echo "INFO: Pomyślnie wypchnięto ${service_name}."
 }
-
 build_frontend_docker_image() {
   local service_name="frontend"
   local service_path="./frontend"
   local image_tag="$1"
-  local ecr_repo_name_suffix="frontend"
-  local full_image_name="${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/${ecr_repo_name_suffix}:${image_tag}"
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Budowanie obrazu Docker dla ${service_name} z tagiem ${image_tag}"
-  echo "INFO: Nazwa obrazu: ${full_image_name}"
-  echo "------------------------------------------------------------------"
+  local full_image_name="${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/${service_name}:${image_tag}"
+  echo "--- Budowanie obrazu Docker dla ${service_name} ---"
   docker build -t "${full_image_name}" "${service_path}"
-
-  login_to_ecr
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Wypychanie obrazu ${service_name} do ECR: ${full_image_name}"
-  echo "------------------------------------------------------------------"
-  docker push "${full_image_name}"
-  echo "INFO: Pomyślnie wypchnięto ${service_name}."
 }
-
-# ZMODYFIKOWANA FUNKCJA
 build_lambda_package() {
   local lambda_module_path="$1"
-  echo "------------------------------------------------------------------"
-  echo "INFO: Budowanie paczki JAR dla ${lambda_module_path}"
-  echo "------------------------------------------------------------------"
+  echo "--- Budowanie paczki JAR dla ${lambda_module_path} ---"
   if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win32" ]]; then
     (cd "${lambda_module_path}" && ./mvnw.cmd clean package)
   else
     (cd "${lambda_module_path}" && ./mvnw clean package)
   fi
-  echo "INFO: Pomyślnie zbudowano paczkę ${lambda_module_path}."
 }
+# ==============================================================================
+# --- Główny Skrypt (LOGIKA ZGODNA Z ARTYKUŁEM) ---
+# ==============================================================================
 
-# ZMODYFIKOWANA FUNKCJA
-upload_lambda_package_to_s3() {
-  local lambda_jar_path="$1"
-  local s3_key="$2"
-  local s3_bucket_name
-
-  echo "------------------------------------------------------------------"
-  echo "INFO: Wgrywanie paczki Lambda ${lambda_jar_path} do S3 jako ${s3_key}..."
-  echo "------------------------------------------------------------------"
-
-  s3_bucket_name=$(cd ./terraform && terraform output -raw s3_lambda_code_bucket_name)
-
-  if [ -z "$s3_bucket_name" ]; then
-    echo "BŁĄD: Nie można pobrać nazwy bucketu S3 dla kodu Lambda."
-    exit 1
-  fi
-  echo "INFO: Bucket S3 dla kodu Lambda: s3://${s3_bucket_name}"
-
-  if [ ! -f "$lambda_jar_path" ]; then
-    echo "BŁĄD: Plik JAR funkcji Lambda nie został znaleziony: ${lambda_jar_path}"
-    exit 1
-  fi
-
-  aws s3 cp "${lambda_jar_path}" "s3://${s3_bucket_name}/${s3_key}"
-  echo "INFO: Pomyślnie wgrano paczkę Lambda do s3://${s3_bucket_name}/${s3_key}"
-}
-
-
-# --- Główny Skrypt ---
-
-# KROK 1: Stwórz/zapewnij istnienie repozytoriów ECR i bucketu S3 dla Lambd
-# (bez zmian)
-echo ">>> KROK 1: Tworzenie/zapewnianie istnienia repozytoriów ECR i bucketu S3 dla Lambd..."
-(
-  cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
-  terraform init -upgrade
-  echo "INFO: Stosowanie konfiguracji Terraform dla repozytoriów ECR i bucketu S3 Lambda..."
-  terraform apply -auto-approve \
-    -target=aws_ecr_repository.frontend_repo \
-    -target=aws_ecr_repository.auth_service_repo \
-    -target=aws_ecr_repository.file_service_repo \
-    -target=aws_ecr_repository.notification_service_repo \
-    -target=aws_s3_bucket.lambda_code_bucket \
-    -target=random_string.suffix
-)
-echo ">>> Repozytoria ECR i bucket S3 dla Lambd powinny teraz istnieć."
-echo "------------------------------------------------------------------"
-
-# KROK 2: Zbuduj obrazy Docker i paczki Lambda
-echo ">>> KROK 2: Budowanie artefaktów..."
-
+# KROK 1: Budowanie wszystkich artefaktów LOKALNIE
+echo ">>> KROK 1: Budowanie wszystkich artefaktów lokalnie..."
 build_frontend_docker_image "${FRONTEND_TAG}"
 build_java_service_and_docker_image "auth-service" "./auth-service" "${AUTH_SERVICE_TAG}"
 build_java_service_and_docker_image "file-service" "./file-service" "${FILE_SERVICE_TAG}"
 build_java_service_and_docker_image "notification-service" "./notification-service" "${NOTIFICATION_SERVICE_TAG}"
-
-# Budowanie obu paczek Lambda
 build_lambda_package "./chat-lambda-handlers"
-build_lambda_package "./db-initializer-lambda" # NOWY KROK
-
-echo ">>> Wszystkie obrazy Docker i paczki Lambda zostały zbudowane."
+build_lambda_package "./db-initializer-lambda"
+echo ">>> Budowanie artefaktów zakończone."
 echo "------------------------------------------------------------------"
 
-# KROK 3: Wypchnij artefakty do AWS
-echo ">>> KROK 3: Wypychanie artefaktów do AWS..."
-
-# Wgrywanie obu paczek Lambda do S3
-upload_lambda_package_to_s3 "./chat-lambda-handlers/target/${LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME}" "${LAMBDA_CHAT_HANDLERS_S3_KEY}"
-upload_lambda_package_to_s3 "./db-initializer-lambda/target/${LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME}" "${LAMBDA_DB_INITIALIZER_S3_KEY}" # NOWY KROK
-
-echo ">>> Wszystkie artefakty zostały wypchnięte."
-echo "------------------------------------------------------------------"
-
-
-# KROK 4: Uruchom pełne terraform apply dla reszty infrastruktury
-echo ">>> KROK 4: Wdrażanie/Aktualizacja pełnej infrastruktury Terraform..."
+# KROK 2: Wdrożenie PEŁNEJ infrastruktury za pomocą Terraform.
+# Terraform stworzy "puste powłoki" Lambd używając dummy ZIP-a.
+echo ">>> KROK 2: Wdrażanie/Aktualizacja pełnej infrastruktury Terraform..."
 (
-  cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
-
-  echo "INFO: Stosowanie pełnej konfiguracji Terraform..."
+  cd ./terraform || exit 1
+  terraform init -upgrade
   terraform apply -auto-approve \
     -var="frontend_image_tag=${FRONTEND_TAG}" \
     -var="auth_service_image_tag=${AUTH_SERVICE_TAG}" \
     -var="file_service_image_tag=${FILE_SERVICE_TAG}" \
     -var="notification_service_image_tag=${NOTIFICATION_SERVICE_TAG}" \
     -var="lambda_chat_handlers_jar_key=${LAMBDA_CHAT_HANDLERS_S3_KEY}" \
-    -var="db_initializer_jar_key=${LAMBDA_DB_INITIALIZER_S3_KEY}" # NOWA ZMIENNA
-
-  TF_APPLY_EXIT_CODE=$?
-  echo "DEBUG: terraform apply w Kroku 4 zakończone z kodem: ${TF_APPLY_EXIT_CODE}"
-  if [ ${TF_APPLY_EXIT_CODE} -ne 0 ]; then
-    echo "BŁĄD: terraform apply w Kroku 4 nie powiodło się z kodem ${TF_APPLY_EXIT_CODE}!"
-    exit ${TF_APPLY_EXIT_CODE}
-  fi
+    -var="db_initializer_jar_key=${LAMBDA_DB_INITIALIZER_S3_KEY}"
 )
-echo ">>> Wdrożenie Terraform zakończone."
+echo ">>> Wdrożenie Terraform zakończone. Powłoki Lambd istnieją."
 echo "------------------------------------------------------------------"
 
-# KROK 5: Wyświetl outputy Terraform
-# (bez zmian)
+# KROK 3: Wypchnij prawdziwy kod i obrazy do AWS
+echo ">>> KROK 3: Wypychanie artefaktów do AWS..."
+login_to_ecr
+
+echo "INFO: Wypychanie obrazów Docker do ECR..."
+docker push "${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/frontend:${FRONTEND_TAG}"
+docker push "${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/auth-service:${AUTH_SERVICE_TAG}"
+docker push "${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/file-service:${FILE_SERVICE_TAG}"
+docker push "${ECR_REGISTRY_URL}/${PROJECT_NAME_PREFIX}/notification-service:${NOTIFICATION_SERVICE_TAG}"
+echo "INFO: Obrazy Docker wypchnięte."
+
+echo "INFO: Wypychanie prawdziwego kodu Lambda do S3..."
+LAMBDA_BUCKET_NAME=$(cd ./terraform && terraform output -raw s3_lambda_code_bucket_name)
+aws s3 cp "./chat-lambda-handlers/target/${LAMBDA_CHAT_HANDLERS_BUILT_JAR_NAME}" "s3://${LAMBDA_BUCKET_NAME}/${LAMBDA_CHAT_HANDLERS_S3_KEY}"
+aws s3 cp "./db-initializer-lambda/target/${LAMBDA_DB_INITIALIZER_BUILT_JAR_NAME}" "s3://${LAMBDA_BUCKET_NAME}/${LAMBDA_DB_INITIALIZER_S3_KEY}"
+echo "INFO: Prawdziwy kod Lambda jest już w S3."
+echo "------------------------------------------------------------------"
+
+# KROK 4: Zaktualizuj usługi, aby pobrały nowy kod/obrazy
+echo ">>> KROK 4: Aktualizacja usług w AWS do najnowszej wersji..."
+
+echo "INFO: Aktualizacja kodu funkcji Lambda z S3..."
+# Pobieramy nazwy funkcji Lambda z outputów Terraform
+SEND_LAMBDA_NAME=$(cd ./terraform && terraform output -raw send_message_lambda_name)
+GET_SENT_LAMBDA_NAME=$(cd ./terraform && terraform output -raw get_sent_messages_lambda_name)
+GET_RECEIVED_LAMBDA_NAME=$(cd ./terraform && terraform output -raw get_received_messages_lambda_name)
+MARK_READ_LAMBDA_NAME=$(cd ./terraform && terraform output -raw mark_message_as_read_lambda_name)
+DB_INIT_LAMBDA_NAME=$(cd ./terraform && terraform output -raw db_initializer_lambda_function_name)
+
+# Aktualizujemy kod każdej Lambdy, wskazując na prawdziwy plik .jar w S3
+aws lambda update-function-code --function-name "${SEND_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
+aws lambda update-function-code --function-name "${GET_SENT_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
+aws lambda update-function-code --function-name "${GET_RECEIVED_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
+aws lambda update-function-code --function-name "${MARK_READ_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
+aws lambda update-function-code --function-name "${DB_INIT_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_DB_INITIALIZER_S3_KEY}" > /dev/null
+echo "INFO: Funkcje Lambda zaktualizowane."
+
+echo "INFO: Wymuszanie nowego wdrożenia dla usług ECS..."
+CLUSTER_NAME=$(cd ./terraform && terraform output -raw ecs_cluster_name)
+ECS_SERVICES_JSON=$(cd ./terraform && terraform output -json ecs_service_names)
+SERVICE_NAMES=$(echo "${ECS_SERVICES_JSON}" | jq -r '.[]')
+
+for service_name in $SERVICE_NAMES; do
+  echo "  -> Aktualizacja usługi: ${service_name}"
+  aws ecs update-service --cluster "${CLUSTER_NAME}" --service "${service_name}" --force-new-deployment --region "${AWS_REGION}" > /dev/null
+done
+echo "INFO: Usługi ECS zaktualizowane."
+echo ">>> Aktualizacja usług zakończona."
+echo "------------------------------------------------------------------"
+
+# KROK 5: Wyświetl outputy
 echo ">>> KROK 5: Wyniki Terraform (Outputs)..."
 (
-  cd ./terraform || { echo "BŁĄD: Nie można przejść do katalogu ./terraform"; exit 1; }
+  cd ./terraform || exit 1
   terraform output
-
-  frontend_url=$(terraform output -raw frontend_url)
-  api_gateway_url=$(terraform output -raw api_gateway_chat_invoke_url)
-  echo "------------------------------------------------------------------"
-  echo "Frontend URL: $frontend_url"
-  echo "Chat API Gateway URL: $api_gateway_url"
-  echo "------------------------------------------------------------------"
 )
 
 echo ">>> Skrypt wdrożeniowy zakończony pomyślnie."
-echo "------------------------------------------------------------------"
