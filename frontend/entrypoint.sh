@@ -78,5 +78,6 @@ echo "Zakończono podstawianie zmiennych środowiskowych."
 # Uruchom serwer 'serve'
 # PORT jest zazwyczaj przekazywany przez Elastic Beanstalk
 echo "Uruchamianie serwera 'serve' na porcie ${PORT:-$DEFAULT_PORT} z katalogu $ROOT_DIR..."
-exec serve -s $ROOT_DIR -l ${PORT:-$DEFAULT_PORT}
-
+# Używamy -l tcp://0.0.0.0:PORT, aby jawnie nasłuchiwać na wszystkich interfejsach
+echo "Uruchamianie serwera 'serve' na 0.0.0.0:${PORT:-$DEFAULT_PORT} z katalogu $ROOT_DIR..."
+exec serve -s dist -l "tcp://0.0.0.0:${PORT:-$DEFAULT_PORT}"

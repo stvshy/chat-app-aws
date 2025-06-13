@@ -144,16 +144,13 @@ locals {
     AWS_REGION_ENV = data.aws_region.current.name
   }
 }
+data "aws_region" "current" {}
+data "aws_caller_identity" "current" {}
 
-# --- Konfiguracja dostępu do internetu dla domyślnej VPC ---
-# 1. ZNAJDŹ istniejącą Bramę Internetową (Internet Gateway)
-# Nie tworzymy nowej, tylko pobieramy dane o tej, która jest już dołączona do domyślnej VPC.
-# 1. Stwórz Bramę Internetową (Internet Gateway) i podepnij ją do domyślnej VPC.
-# Zakładamy, że znaleziona VPC ma już podpiętą bramę internetową.
-# Tworzymy Bramę Internetową, ponieważ wiemy, że po `destroy` jej nie ma,
-# i podpinamy ją do znalezionej VPC.
-# --- Pobieranie informacji o istniejących zasobach sieciowych ---
-# Znajdujemy JEDYNĄ istniejącą VPC. Zakładamy, że w środowisku lab jest tylko jedna.
+
+# --- ODPORNA KONFIGURACJA SIECI ---
+
+# 1. Znajdź domyślną VPC i jej podsieci
 data "aws_vpc" "default" {
   default = true
 }
@@ -163,29 +160,36 @@ data "aws_subnets" "default" {
     values = [data.aws_vpc.default.id]
   }
 }
-# # TEN BLOK MUSI ZOSTAĆ
-# data "aws_route_table" "main_rt" {
-#   vpc_id = data.aws_vpc.default.id
-#   filter {
-#     name   = "association.main"
-#     values = ["true"]
-#   }
-# }
 
-data "aws_region" "current" {}
-data "aws_caller_identity" "current" {}
+# 2. Spróbuj znaleźć istniejącą bramę internetową (IGW)
+data "aws_internet_gateway" "existing" {
+  # Używamy `count`, aby uniknąć błędu, gdyby IGW nie istniała.
+  # Jeśli data.aws_vpc.default.id istnieje, count = 1 (szukaj).
+  count = data.aws_vpc.default.id != "" ? 1 : 0
 
+  filter {
+    name   = "attachment.vpc-id"
+    values = [data.aws_vpc.default.id]
+  }
+}
 
+# 3. Stwórz nową IGW TYLKO WTEDY, gdy żadna nie została znaleziona
+resource "aws_internet_gateway" "new" {
+  # Jeśli `data.aws_internet_gateway.existing` nic nie znalazło (jego lista jest pusta), stwórz.
+  count = length(data.aws_internet_gateway.existing) == 0 ? 1 : 0
 
-# 2. Stwórz Bramę Internetową (Internet Gateway) i podepnij ją do domyślnej VPC.
-resource "aws_internet_gateway" "main_igw" {
   vpc_id = data.aws_vpc.default.id
   tags = merge(local.common_tags, {
-    Name = "${local.project_name}-igw"
+    Name = "${local.project_name}-igw-new"
   })
 }
 
-# 3. Znajdź główną tablicę routingu dla naszego domyślnego VPC.
+# 4. Ustal, którego ID bramy użyć (istniejącego lub nowo utworzonego)
+locals {
+  internet_gateway_id = one(concat(data.aws_internet_gateway.existing[*].id, aws_internet_gateway.new[*].id))
+}
+
+# 5. Znajdź główną tabelę routingu
 data "aws_route_table" "main_rt" {
   vpc_id = data.aws_vpc.default.id
   filter {
@@ -194,16 +198,23 @@ data "aws_route_table" "main_rt" {
   }
 }
 
-# 4. Dodaj trasę do internetu (0.0.0.0/0) w tej tablicy routingu.
-#    Ta trasa mówi: "cały ruch do internetu kieruj przez naszą nowo stworzoną bramę".
-#    To jest kluczowy krok, który da dostęp do internetu zasobom w publicznych podsieciach.
-resource "aws_route" "default_route_to_internet" {
+# 6. Sprawdź, czy domyślna trasa (0.0.0.0/0) już istnieje
+data "aws_route" "existing_default" {
+  # Jeśli tabela routingu została znaleziona, count = 1 (szukaj trasy).
+  count = data.aws_route_table.main_rt.id != "" ? 1 : 0
+
   route_table_id         = data.aws_route_table.main_rt.id
   destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.main_igw.id
+}
 
-  # Dodajemy tę zależność, aby Terraform najpierw stworzył IGW, a dopiero potem trasę.
-  depends_on = [aws_internet_gateway.main_igw]
+# 7. Stwórz nową trasę TYLKO WTEDY, gdy nie została znaleziona
+resource "aws_route" "new_default" {
+  # Jeśli `data.aws_route.existing_default` nic nie znalazło (jego lista jest pusta), stwórz.
+  count = length(data.aws_route.existing_default) == 0 ? 1 : 0
+
+  route_table_id         = data.aws_route_table.main_rt.id
+  destination_cidr_block = "0.0.0.0/0"
+  gateway_id             = local.internet_gateway_id
 }
 # --- Grupy bezpieczeństwa ---
 resource "aws_security_group" "alb_sg" {
@@ -755,7 +766,6 @@ resource "aws_lambda_function" "send_message_lambda" {
     ignore_changes = [
       filename,
       source_code_hash,
-      last_modified,
     ]
   }
 }
@@ -778,7 +788,6 @@ resource "aws_lambda_function" "get_sent_messages_lambda" {
     ignore_changes = [
       filename,
       source_code_hash,
-      last_modified,
     ]
   }
 }
@@ -801,7 +810,6 @@ resource "aws_lambda_function" "get_received_messages_lambda" {
     ignore_changes = [
       filename,
       source_code_hash,
-      last_modified,
     ]
   }
 }
@@ -824,7 +832,7 @@ resource "aws_lambda_function" "mark_message_as_read_lambda" {
     ignore_changes = [
       filename,
       source_code_hash,
-      last_modified,
+
     ]
   }
 }
@@ -1194,7 +1202,6 @@ resource "aws_lambda_function" "db_initializer_lambda" {
     ignore_changes = [
       filename,
       source_code_hash,
-      last_modified,
     ]
   }
 }
@@ -1372,7 +1379,29 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
     name      = "VITE_NOTIFICATION_API_URL" # POPRAWNA NAZWA
     value     = "http://${aws_lb.main_alb.dns_name}/api/notifications"
   }
-  # >>> DODAJ TEN BLOK USTAWIEŃ <<<
+  setting {
+    namespace = "aws:elasticbeanstalk:application:environment"
+    name      = "TF_DEPENDENCIES_READY"
+    value     = "ALB: ${aws_lb.main_alb.id}, APIGW: ${aws_api_gateway_rest_api.chat_api.id}, SG: ${aws_security_group.eb_sg.id}"
+  }
+  # --- DODAJ TE BLOKI ---
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "VPCId"
+    value     = data.aws_vpc.default.id
+  }
+  setting {
+    namespace = "aws:ec2:vpc"
+    name      = "Subnets"
+    # Używamy join, ponieważ EB oczekuje stringa z podsieciami po przecinku
+    value     = join(",", data.aws_subnets.default.ids)
+  }
+  setting {
+    # Upewnij się, że instancje w EB dostają publiczne IP, aby mogły np. pobrać obraz z ECR
+    namespace = "aws:ec2:vpc"
+    name      = "AssociatePublicIpAddress"
+    value     = "true"
+  }
   setting {
     namespace = "aws:autoscaling:launchconfiguration"
     name      = "SecurityGroups"
@@ -1414,24 +1443,28 @@ resource "aws_elastic_beanstalk_environment" "frontend_env" {
     name      = "Application Healthcheck URL"
     value     = "/" # To jest to samo, ale dla innej warstwy konfiguracji
   }
-  wait_for_ready_timeout = "30m"
+  setting {
+    namespace = "aws:autoscaling:launchconfiguration"
+    name      = "InstanceType"
+    value     = "t2.micro" # <--- ZMIANA NA BARDZIEJ DOSTĘPNY TYP
+  }
+
+  wait_for_ready_timeout = "40m"
   tags                   = local.common_tags
   # Zależność jest teraz od ZAKOŃCZENIA opóźnienia, które czeka na regułę.
-  depends_on = [time_sleep.eb_sg_propagation_delay]
+  depends_on = [time_sleep.wait_for_propagation]
 }
 # Ten zasób wstrzymuje wykonanie Terraformu, aby dać AWS czas
 # na pełną propagację informacji o nowej grupie bezpieczeństwa.
-resource "time_sleep" "eb_sg_propagation_delay" {
+# Ten zasób wstrzymuje wykonanie Terraformu, aby dać AWS czas
+# na pełną propagację informacji o nowo stworzonych zasobach sieciowych.
+resource "time_sleep" "wait_for_propagation" {
+  # Czekamy 30 sekund. To powinno wystarczyć.
   create_duration = "30s"
 
-  # ZMIEŃ TĘ SEKCJĘ:
-  triggers = {
-    # Ta pauza uruchomi się dopiero PO pomyślnym utworzeniu WSZYSTKICH tych zasobów.
-    # Tworzymy sztuczną barierę synchronizacyjną.
-    alb_id = aws_lb.main_alb.id
-    eb_sg_id = aws_security_group.eb_sg.id
-    api_gw_id = aws_api_gateway_rest_api.chat_api.id
-  }
+  # WAŻNE: Ta pauza uruchomi się dopiero PO pomyślnym utworzeniu
+  # grupy bezpieczeństwa dla EB. W ten sposób tworzymy barierę.
+  depends_on = [aws_security_group.eb_sg]
 }
 
 # --- Wyjścia (Outputs) ---
