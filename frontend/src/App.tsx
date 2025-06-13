@@ -196,7 +196,6 @@ export default function App() {
                             markNotificationAsReadInService
                         } // Ta funkcja jest przekazywana do przycisku w panelu
                     />
-                )
             </header>
             <main className="app-main">
                 <div className="chat-page-wrapper">
