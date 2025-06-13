@@ -292,29 +292,56 @@ resource "aws_security_group" "fargate_sg" {
   tags = local.common_tags
 }
 
-resource "aws_security_group" "lambda_vpc_sg" {
-  name        = "${local.project_name}-lambda-vpc-sg"
-  description = "Security group for Lambda functions in VPC"
+resource "aws_security_group" "internal_sg" {
+  name        = "${local.project_name}-internal-sg"
+  description = "Security group for internal resources (Fargate and Lambda)"
   vpc_id      = data.aws_vpc.default.id
-  tags        = local.common_tags
 
-  # --- DODAJ TĘ REGUŁĘ ---
-  # Zezwól na ruch wewnątrz tej samej grupy bezpieczeństwa.
-  # To pozwoli Lambdom komunikować się z zasobami (jak VPC Endpoint),
-  # które też używają tej grupy.
+  # --- Reguły przychodzące ---
+
+  # Zezwól na ruch z Load Balancera na porty aplikacji
   ingress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    self        = true # Kluczowy atrybut!
+    from_port       = 8081
+    to_port         = 8081
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress {
+    from_port       = 8083
+    to_port         = 8083
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress {
+    from_port       = 8084
+    to_port         = 8084
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress {
+    from_port       = 3000
+    to_port         = 3000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
   }
 
+  # KLUCZOWA REGUŁA: Zezwól na cały ruch wewnątrz tej grupy
+  # To pozwoli Fargate gadać z VPC Endpoint i Lambdom gadać z RDS
+  ingress {
+    protocol  = "-1" # Dowolny protokół
+    from_port = 0
+    to_port   = 0
+    self      = true # Zezwól na ruch z zasobów w tej samej grupie
+  }
+
+  # --- Reguła wychodząca (bez zmian) ---
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+  tags = local.common_tags
 }
 
 # --- Repozytoria ECR ---
@@ -478,7 +505,7 @@ resource "aws_security_group" "rds_sg" {
     from_port       = 5432
     to_port         = 5432
     protocol        = "tcp"
-    security_groups = [aws_security_group.lambda_vpc_sg.id]
+    security_groups = [aws_security_group.internal_sg.id]
   }
   egress {
     from_port   = 0
@@ -676,7 +703,7 @@ resource "aws_ecs_service" "app_fargate_services" {
   health_check_grace_period_seconds = 120
   network_configuration {
     subnets          = data.aws_subnets.default.ids
-    security_groups  = [aws_security_group.fargate_sg.id]
+    security_groups  = [aws_security_group.internal_sg.id]
     assign_public_ip = true
   }
   load_balancer {
@@ -795,7 +822,7 @@ resource "aws_lambda_function" "send_message_lambda" {
   environment { variables = local.chat_lambda_common_environment_variables }
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+    security_group_ids = [aws_security_group.internal_sg.id]
   }
   tags = local.common_tags
   lifecycle {
@@ -817,7 +844,7 @@ resource "aws_lambda_function" "get_sent_messages_lambda" {
   environment { variables = local.chat_lambda_common_environment_variables }
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+    security_group_ids = [aws_security_group.internal_sg.id]
   }
   tags = local.common_tags
   lifecycle {
@@ -839,7 +866,7 @@ resource "aws_lambda_function" "get_received_messages_lambda" {
   environment { variables = local.chat_lambda_common_environment_variables }
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+    security_group_ids = [aws_security_group.internal_sg.id]
   }
   tags = local.common_tags
   lifecycle {
@@ -861,7 +888,7 @@ resource "aws_lambda_function" "mark_message_as_read_lambda" {
   environment { variables = local.chat_lambda_common_environment_variables }
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+    security_group_ids = [aws_security_group.internal_sg.id]
   }
   tags = local.common_tags
   lifecycle {
@@ -1230,7 +1257,7 @@ resource "aws_lambda_function" "db_initializer_lambda" {
   # Ta funkcja również musi być w VPC, aby połączyć się z RDS
   vpc_config {
     subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.lambda_vpc_sg.id]
+    security_group_ids = [aws_security_group.internal_sg.id]
   }
 
   tags = local.common_tags
@@ -1251,28 +1278,28 @@ resource "aws_vpc_endpoint" "sqs_endpoint" {
   vpc_endpoint_type = "Interface" # Typ 'Interface' tworzy interfejs sieciowy w podsieciach
 
   subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-  security_group_ids = [aws_security_group.lambda_vpc_sg.id]
-  private_dns_enabled = true # Pozwala używać standardowych DNS (np. sqs.us-east-1.amazonaws.com) wewnątrz VPC
+  security_group_ids = [aws_security_group.internal_sg.id]
 
+  private_dns_enabled = true
   tags = merge(local.common_tags, {
     Name = "${local.project_name}-sqs-vpc-endpoint"
   })
 }
-resource "null_resource" "invoke_db_initializer" {
-  # Ta sekcja będzie wykonana tylko wtedy, gdy zmieni się ARN bazy danych (czyli przy jej tworzeniu)
-  triggers = {
-    db_instance_arn = aws_db_instance.chat_db.arn
-    run_always      = time_static.timestamp.rfc3339
-  }
-
-  # Wywołaj funkcję Lambda
-  provisioner "local-exec" {
-    # Użycie podwójnych cudzysłowów jest bardziej kompatybilne z Windows/MINGW64
-    command = "aws lambda invoke --function-name ${aws_lambda_function.db_initializer_lambda.function_name} --payload \"{}\" --cli-binary-format raw-in-base64-out out.json"
-  }
-  # Upewnij się, że provisioner jest uruchamiany po utworzeniu funkcji Lambda
-  depends_on = [aws_lambda_function.db_initializer_lambda]
-}
+# resource "null_resource" "invoke_db_initializer" {
+#   # Ta sekcja będzie wykonana tylko wtedy, gdy zmieni się ARN bazy danych (czyli przy jej tworzeniu)
+#   triggers = {
+#     db_instance_arn = aws_db_instance.chat_db.arn
+#     run_always      = time_static.timestamp.rfc3339
+#   }
+#
+#   # Wywołaj funkcję Lambda
+#   provisioner "local-exec" {
+#     # Użycie podwójnych cudzysłowów jest bardziej kompatybilne z Windows/MINGW64
+#     command = "aws lambda invoke --function-name ${aws_lambda_function.db_initializer_lambda.function_name} --payload \"{}\" --cli-binary-format raw-in-base64-out out.json"
+#   }
+#   # Upewnij się, że provisioner jest uruchamiany po utworzeniu funkcji Lambda
+#   depends_on = [aws_lambda_function.db_initializer_lambda]
+# }
 # --- Grupa Bezpieczeństwa dla instancji Elastic Beanstalk ---
 # resource "aws_security_group" "eb_sg" {
 #   name        = "${local.project_name}-eb-sg"

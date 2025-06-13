@@ -121,6 +121,9 @@ aws lambda update-function-code --function-name "${GET_RECEIVED_LAMBDA_NAME}" --
 aws lambda update-function-code --function-name "${MARK_READ_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
 aws lambda update-function-code --function-name "${DB_INIT_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_DB_INITIALIZER_S3_KEY}" > /dev/null
 echo "INFO: Funkcje Lambda zaktualizowane."
+echo "INFO: Wywoływanie funkcji Lambda inicjalizującej schemat bazy danych..."
+aws lambda invoke --function-name "${DB_INIT_LAMBDA_NAME}" --payload "{}" --cli-binary-format raw-in-base64-out /dev/null # Przekieruj wyjście do /dev/null
+echo "INFO: Funkcja inicjalizująca schemat bazy danych wywołana."
 echo "INFO: Wymuszanie nowego wdrożenia dla usług ECS..."
 CLUSTER_NAME=$(cd ./terraform && terraform output -raw ecs_cluster_name)
 
