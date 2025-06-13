@@ -5,15 +5,15 @@ export default function Register() {
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     // Użyj nowej zmiennej środowiskowej dla API autoryzacji
-    const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
+    // const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
 
     const handleRegister = async () => {
-        if (!authApiUrl) {
-            alert("Auth API URL is not configured!");
-            return;
-        }
+        // if (!authApiUrl) {
+        //     alert("Auth API URL is not configured!");
+        //     return;
+        // }
         try {
-            const res = await fetch(`${authApiUrl}/register`, {
+            const res = await fetch(`/api/auth/register`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",

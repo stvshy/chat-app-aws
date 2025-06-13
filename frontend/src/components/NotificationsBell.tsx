@@ -8,7 +8,7 @@ import './notifications.css';
 interface NotificationsBellProps {
     token: string;
     username: string;
-    notificationApiUrl: string;
+    // notificationApiUrl: string;
     onNotificationItemClick: (record: INotificationRecord) => void;
     // Nowe propsy do zarządzania stanem z App.tsx
     notificationsFromApp: INotificationRecord[];
@@ -19,7 +19,7 @@ interface NotificationsBellProps {
 const NotificationsBell: React.FC<NotificationsBellProps> = ({
                                                                  token,
                                                                  username,
-                                                                 notificationApiUrl,
+                                                                 // notificationApiUrl,
                                                                  onNotificationItemClick,
                                                                  notificationsFromApp,
                                                                  onNotificationsFetched,
@@ -29,32 +29,34 @@ const NotificationsBell: React.FC<NotificationsBellProps> = ({
     const [unreadCount, setUnreadCount] = useState(0);
     const [showPanel, setShowPanel] = useState(false);
     const bellRef = useRef<HTMLDivElement>(null);
-
+    const notificationsApiPrefix = "/api/notifications";
     const fetchNotifications = async () => {
-        if (!notificationApiUrl || !token || !username) return;
+        // Zmieniamy warunek - nie sprawdzamy już `notificationApiUrl`
+        if (!token || !username) return;
         try {
-            const res = await fetch(`${notificationApiUrl}/history`, {
+            // Używamy względnej ścieżki
+            const res = await fetch(`${notificationsApiPrefix}/history`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
                 const data: INotificationRecord[] = await res.json();
                 data.sort((a, b) => b.timestamp - a.timestamp);
-                onNotificationsFetched(data); // Aktualizuj stan w App.tsx
+                onNotificationsFetched(data);
             } else {
                 console.error("Error fetching notifications:", await res.text());
-                onNotificationsFetched([]); // W przypadku błędu, wyślij pustą listę
+                onNotificationsFetched([]);
             }
         } catch (error) {
             console.error("Error fetching notifications:", error);
-            onNotificationsFetched([]); // W przypadku błędu, wyślij pustą listę
+            onNotificationsFetched([]);
         }
     };
 
     useEffect(() => {
-        fetchNotifications(); // Pobierz przy montowaniu
+        fetchNotifications();
         const intervalId = setInterval(fetchNotifications, 30000);
         return () => clearInterval(intervalId);
-    }, [token, notificationApiUrl, username]); // Zależności dla pobierania
+    }, [token, username]);
 
     // Aktualizuj licznik nieprzeczytanych, gdy zmieni się lista z App.tsx
     useEffect(() => {

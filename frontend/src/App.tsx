@@ -18,9 +18,8 @@ export default function App() {
     >([]);
     const [chatMessagesRefreshKey, setChatMessagesRefreshKey] = useState(0);
 
-    const notificationApiUrl = import.meta.env.VITE_NOTIFICATION_API_URL;
+    const notificationsApiPrefix = "/api/notifications";
     const chatApiUrl = import.meta.env.VITE_CHAT_API_URL;
-
     const handleLogin = (t: string, u: string) => {
         setToken(t);
         setUsername(u);
@@ -61,18 +60,15 @@ export default function App() {
         }
     };
 
-    const markNotificationAsReadInService = async (
-        notificationId: string,
-    ): Promise<boolean> => {
-        if (!notificationApiUrl || !token) return false;
+    const markNotificationAsReadInService = async (notificationId: string): Promise<boolean> => {
+        // Usunęliśmy sprawdzanie `notificationApiUrl`
+        if (!token) return false;
         try {
-            const res = await fetch(
-                `${notificationApiUrl}/${notificationId}/mark-as-read`,
-                {
-                    method: "POST",
-                    headers: { Authorization: `Bearer ${token}` },
-                },
-            );
+            // Używamy względnej ścieżki
+            const res = await fetch(`${notificationsApiPrefix}/${notificationId}/mark-as-read`, {
+                method: "POST",
+                headers: { Authorization: `Bearer ${token}` },
+            });
 
             if (res.ok) {
                 const updatedNotification =
@@ -189,11 +185,10 @@ export default function App() {
         <div className="app-container">
             <header className="app-header">
                 {/*<h1>Projekt Chmury Chat</h1>*/}
-                {notificationApiUrl && (
                     <NotificationsBell
                         token={token}
                         username={username}
-                        notificationApiUrl={notificationApiUrl}
+                        // notificationApiUrl={notificationApiUrl}
                         onNotificationItemClick={handleNotificationItemClick}
                         notificationsFromApp={allNotifications}
                         onNotificationsFetched={updateNotificationsList}
@@ -201,7 +196,7 @@ export default function App() {
                             markNotificationAsReadInService
                         } // Ta funkcja jest przekazywana do przycisku w panelu
                     />
-                )}
+                )
             </header>
             <main className="app-main">
                 <div className="chat-page-wrapper">
