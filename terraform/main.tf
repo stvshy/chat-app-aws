@@ -96,7 +96,7 @@ locals {
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
         { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name },
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_lb.main_alb.dns_name}" }
       ]
     },
     (local.file_service_name) = {
@@ -113,9 +113,21 @@ locals {
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" },
         { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.upload_bucket.bucket },
         { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name },
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_lb.main_alb.dns_name}" }
       ]
     },
+    (local.frontend_name) = {
+      port = 3000 # Port, na którym działa frontend w kontenerze
+      ecr_repo_base_url = aws_ecr_repository.frontend_repo.repository_url
+      image_tag         = var.frontend_image_tag
+      log_group_name = aws_cloudwatch_log_group.frontend_logs.name # Musisz stworzyć tę grupę logów
+      target_group_arn = aws_lb_target_group.frontend_tg.arn # Musisz stworzyć tę grupę docelową
+      environment_vars = [
+        # Z powrotem dodajemy tę jedną zmienną.
+        # Reszta API będzie używać ścieżek względnych.
+        { name = "VITE_CHAT_API_URL", value = "${aws_api_gateway_stage.chat_api_stage_v1.invoke_url}/messages" }
+      ]
+    }
     (local.notification_service_name) = {
       port               = 8084
       ecr_repo_base_url  = aws_ecr_repository.notification_service_repo.repository_url
@@ -131,8 +143,7 @@ locals {
         { name = "AWS_SNS_TOPIC_ARN", value = aws_sns_topic.notifications_topic.arn },
         { name = "AWS_DYNAMODB_TABLE_NAME_NOTIFICATION_HISTORY", value = aws_dynamodb_table.notifications_history_table.name },
         { name = "APP_SQS_QUEUE_URL", value = aws_sqs_queue.chat_notifications_queue.id },
-        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}" }
-      ]
+        { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_lb.main_alb.dns_name}" }      ]
     }
   }
 
@@ -147,6 +158,44 @@ locals {
 data "aws_region" "current" {}
 data "aws_caller_identity" "current" {}
 
+# Grupa logów dla frontendu
+resource "aws_cloudwatch_log_group" "frontend_logs" {
+  name              = "/ecs/${local.project_name}/${local.frontend_name}"
+  retention_in_days = 7
+  tags              = local.common_tags
+}
+
+# Grupa docelowa (Target Group) dla frontendu
+resource "aws_lb_target_group" "frontend_tg" {
+  name        = substr("${local.project_name}-fe-tg", 0, 32)
+  port        = 3000
+  protocol    = "HTTP"
+  vpc_id      = data.aws_vpc.default.id
+  target_type = "ip"
+  health_check {
+    path     = "/" # Zakładając, że frontend odpowiada na ścieżce głównej
+    protocol = "HTTP"
+    matcher  = "200"
+  }
+  tags = local.common_tags
+}
+
+# Reguła listenera dla frontendu (domyślna)
+resource "aws_lb_listener_rule" "frontend_rule" {
+  listener_arn = aws_lb_listener.http_listener.arn
+  priority     = 500 # Najniższy priorytet, będzie działać jako reguła domyślna
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.frontend_tg.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"] # Przechwytuje cały ruch, który nie pasuje do innych reguł
+    }
+  }
+}
 
 # --- ODPORNA KONFIGURACJA SIECI ---
 
@@ -161,35 +210,16 @@ data "aws_subnets" "default" {
   }
 }
 
-# 2. Spróbuj znaleźć istniejącą bramę internetową (IGW)
-data "aws_internet_gateway" "existing" {
-  # Używamy `count`, aby uniknąć błędu, gdyby IGW nie istniała.
-  # Jeśli data.aws_vpc.default.id istnieje, count = 1 (szukaj).
-  count = data.aws_vpc.default.id != "" ? 1 : 0
-
-  filter {
-    name   = "attachment.vpc-id"
-    values = [data.aws_vpc.default.id]
-  }
-}
-
-# 3. Stwórz nową IGW TYLKO WTEDY, gdy żadna nie została znaleziona
-resource "aws_internet_gateway" "new" {
-  # Jeśli `data.aws_internet_gateway.existing` nic nie znalazło (jego lista jest pusta), stwórz.
-  count = length(data.aws_internet_gateway.existing) == 0 ? 1 : 0
-
+# 2. Stwórz bramę internetową. Jeśli już istnieje w stanie, Terraform nic nie zrobi.
+#    Jeśli nie istnieje, zostanie stworzona.
+resource "aws_internet_gateway" "main_igw" {
   vpc_id = data.aws_vpc.default.id
   tags = merge(local.common_tags, {
-    Name = "${local.project_name}-igw-new"
+    Name = "${local.project_name}-igw"
   })
 }
 
-# 4. Ustal, którego ID bramy użyć (istniejącego lub nowo utworzonego)
-locals {
-  internet_gateway_id = one(concat(data.aws_internet_gateway.existing[*].id, aws_internet_gateway.new[*].id))
-}
-
-# 5. Znajdź główną tabelę routingu
+# 3. Znajdź główną tabelę routingu (to zostaje bez zmian)
 data "aws_route_table" "main_rt" {
   vpc_id = data.aws_vpc.default.id
   filter {
@@ -198,23 +228,12 @@ data "aws_route_table" "main_rt" {
   }
 }
 
-# 6. Sprawdź, czy domyślna trasa (0.0.0.0/0) już istnieje
-data "aws_route" "existing_default" {
-  # Jeśli tabela routingu została znaleziona, count = 1 (szukaj trasy).
-  count = data.aws_route_table.main_rt.id != "" ? 1 : 0
-
+# 4. Stwórz trasę domyślną. Jeśli już istnieje w stanie, nic się nie stanie.
+#    Jeśli nie, zostanie utworzona.
+resource "aws_route" "default_route" {
   route_table_id         = data.aws_route_table.main_rt.id
   destination_cidr_block = "0.0.0.0/0"
-}
-
-# 7. Stwórz nową trasę TYLKO WTEDY, gdy nie została znaleziona
-resource "aws_route" "new_default" {
-  # Jeśli `data.aws_route.existing_default` nic nie znalazło (jego lista jest pusta), stwórz.
-  count = length(data.aws_route.existing_default) == 0 ? 1 : 0
-
-  route_table_id         = data.aws_route_table.main_rt.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = local.internet_gateway_id
+  gateway_id             = aws_internet_gateway.main_igw.id
 }
 # --- Grupy bezpieczeństwa ---
 resource "aws_security_group" "alb_sg" {
@@ -255,6 +274,12 @@ resource "aws_security_group" "fargate_sg" {
   ingress {
     from_port       = 8084
     to_port         = 8084
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb_sg.id]
+  }
+  ingress {
+    from_port       = 3000
+    to_port         = 3000
     protocol        = "tcp"
     security_groups = [aws_security_group.alb_sg.id]
   }
@@ -595,11 +620,11 @@ variable "lab_role_arn" {
   default     = "arn:aws:iam::044902896603:role/LabRole"
 }
 
-variable "lab_instance_profile_name" {
-  description = "Name of the existing LabInstanceProfile for Elastic Beanstalk"
-  type        = string
-  default     = "LabInstanceProfile"
-}
+# variable "lab_instance_profile_name" {
+#   description = "Name of the existing LabInstanceProfile for Elastic Beanstalk"
+#   type        = string
+#   default     = "LabInstanceProfile"
+# }
 # --- Definicje Zadań i Usługi ECS dla Fargate ---
 resource "aws_ecs_task_definition" "app_fargate_task_definitions" {
   for_each = local.fargate_services
@@ -663,8 +688,7 @@ resource "aws_ecs_service" "app_fargate_services" {
     aws_dynamodb_table.notifications_history_table,
     aws_dynamodb_table.user_profiles_table,
     aws_sqs_queue.chat_notifications_queue,
-    aws_elastic_beanstalk_environment.frontend_env
-  ]
+    aws_lb_listener_rule.frontend_rule,  ]
   tags = local.common_tags
 }
 
@@ -1237,31 +1261,31 @@ resource "null_resource" "invoke_db_initializer" {
   depends_on = [aws_lambda_function.db_initializer_lambda]
 }
 # --- Grupa Bezpieczeństwa dla instancji Elastic Beanstalk ---
-resource "aws_security_group" "eb_sg" {
-  name        = "${local.project_name}-eb-sg"
-  description = "Security group for Elastic Beanstalk environment instances"
-  vpc_id      = data.aws_vpc.default.id
-
-  # Zezwól na ruch przychodzący na porcie 3000 (port kontenera frontendu)
-  # z dowolnego miejsca. To pozwoli health checkerowi EB i użytkownikom
-  # dotrzeć do aplikacji (chociaż ruch i tak będzie szedł przez CNAME).
-  ingress {
-    from_port   = 3000
-    to_port     = 3000
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "Allow traffic to Frontend container"
-  }
-
-  # Zezwól na cały ruch wychodzący (np. po aktualizacje, pobranie obrazu Docker z ECR)
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-  tags = local.common_tags
-}
+# resource "aws_security_group" "eb_sg" {
+#   name        = "${local.project_name}-eb-sg"
+#   description = "Security group for Elastic Beanstalk environment instances"
+#   vpc_id      = data.aws_vpc.default.id
+#
+#   # Zezwól na ruch przychodzący na porcie 3000 (port kontenera frontendu)
+#   # z dowolnego miejsca. To pozwoli health checkerowi EB i użytkownikom
+#   # dotrzeć do aplikacji (chociaż ruch i tak będzie szedł przez CNAME).
+#   ingress {
+#     from_port   = 3000
+#     to_port     = 3000
+#     protocol    = "tcp"
+#     cidr_blocks = ["0.0.0.0/0"]
+#     description = "Allow traffic to Frontend container"
+#   }
+#
+#   # Zezwól na cały ruch wychodzący (np. po aktualizacje, pobranie obrazu Docker z ECR)
+#   egress {
+#     from_port   = 0
+#     to_port     = 0
+#     protocol    = "-1"
+#     cidr_blocks = ["0.0.0.0/0"]
+#   }
+#   tags = local.common_tags
+# }
 # Deployment i Stage API Gateway
 resource "aws_api_gateway_deployment" "chat_api_deployment" {
   rest_api_id = aws_api_gateway_rest_api.chat_api.id
@@ -1326,146 +1350,146 @@ resource "aws_api_gateway_stage" "chat_api_stage_v1" {
 # }
 
 # --- Aplikacja Elastic Beanstalk dla frontendu ---
-resource "aws_elastic_beanstalk_application" "frontend_app" {
-  name        = "${local.project_name}-frontend-app"
-  description = "Frontend for Projekt Chmury V2"
-  tags        = local.common_tags
-}
-locals {
-  frontend_dockerrun_content = jsonencode({
-    AWSEBDockerrunVersion = "1",
-    Image = { Name = "${aws_ecr_repository.frontend_repo.repository_url}:${var.frontend_image_tag}", Update = "true" },
-    Ports = [{ ContainerPort = 3000 }]
-  })
-}
-resource "aws_s3_object" "frontend_dockerrun" {
-  bucket  = aws_s3_bucket.upload_bucket.id
-  key     = "Dockerrun.aws.json.${random_string.suffix.result}"
-  content = local.frontend_dockerrun_content
-  etag    = md5(local.frontend_dockerrun_content)
-}
-resource "aws_elastic_beanstalk_application_version" "frontend_app_version" {
-  name        = "${local.project_name}-frontend-v1-${random_string.suffix.result}"
-  application = aws_elastic_beanstalk_application.frontend_app.name
-  bucket      = aws_s3_bucket.upload_bucket.id
-  key         = aws_s3_object.frontend_dockerrun.key
-  description = "Frontend application version from ECR"
-}
-resource "aws_elastic_beanstalk_environment" "frontend_env" {
-  name                = "${local.project_name}-frontend-env"
-  application         = aws_elastic_beanstalk_application.frontend_app.name
-  solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker"
-  version_label       = aws_elastic_beanstalk_application_version.frontend_app_version.name
-
-  # Zmienne środowiskowe zostają bez zmian
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_AUTH_API_URL"
-    value     = "http://${aws_lb.main_alb.dns_name}/api/auth"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_CHAT_API_URL" # POPRAWNA NAZWA
-    value     = "${aws_api_gateway_stage.chat_api_stage_v1.invoke_url}/messages"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_FILE_API_URL" # POPRAWNA NAZWA
-    value     = "http://${aws_lb.main_alb.dns_name}/api/files"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "VITE_NOTIFICATION_API_URL" # POPRAWNA NAZWA
-    value     = "http://${aws_lb.main_alb.dns_name}/api/notifications"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:application:environment"
-    name      = "TF_DEPENDENCIES_READY"
-    value     = "ALB: ${aws_lb.main_alb.id}, APIGW: ${aws_api_gateway_rest_api.chat_api.id}, SG: ${aws_security_group.eb_sg.id}"
-  }
-  # --- DODAJ TE BLOKI ---
-  setting {
-    namespace = "aws:ec2:vpc"
-    name      = "VPCId"
-    value     = data.aws_vpc.default.id
-  }
-  setting {
-    namespace = "aws:ec2:vpc"
-    name      = "Subnets"
-    # Używamy join, ponieważ EB oczekuje stringa z podsieciami po przecinku
-    value     = join(",", data.aws_subnets.default.ids)
-  }
-  setting {
-    # Upewnij się, że instancje w EB dostają publiczne IP, aby mogły np. pobrać obraz z ECR
-    namespace = "aws:ec2:vpc"
-    name      = "AssociatePublicIpAddress"
-    value     = "true"
-  }
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "SecurityGroups"
-    value     = aws_security_group.eb_sg.id # Przypisujemy ID naszej nowej grupy
-  }
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "IamInstanceProfile"
-    value     = var.lab_instance_profile_name
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:environment"
-    name      = "ServiceRole"
-    value     = var.lab_role_arn # Używamy pełnego ARN roli LabRole
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "StreamLogs"
-    value     = "true"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "DeleteOnTerminate"
-    value     = "true"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:cloudwatch:logs"
-    name      = "RetentionInDays"
-    value     = "7"
-  }
-  setting {
-    namespace = "aws:elasticbeanstalk:environment:process:default"
-    name      = "HealthCheckPath"
-    value     = "/" # Upewnij się, że health check sprawdza ścieżkę główną
-  }
-
-  setting {
-    namespace = "aws:elasticbeanstalk:application"
-    name      = "Application Healthcheck URL"
-    value     = "/" # To jest to samo, ale dla innej warstwy konfiguracji
-  }
-  setting {
-    namespace = "aws:autoscaling:launchconfiguration"
-    name      = "InstanceType"
-    value     = "t2.micro" # <--- ZMIANA NA BARDZIEJ DOSTĘPNY TYP
-  }
-
-  wait_for_ready_timeout = "40m"
-  tags                   = local.common_tags
-  # Zależność jest teraz od ZAKOŃCZENIA opóźnienia, które czeka na regułę.
-  depends_on = [time_sleep.wait_for_propagation]
-}
+# resource "aws_elastic_beanstalk_application" "frontend_app" {
+#   name        = "${local.project_name}-frontend-app"
+#   description = "Frontend for Projekt Chmury V2"
+#   tags        = local.common_tags
+# }
+# locals {
+#   frontend_dockerrun_content = jsonencode({
+#     AWSEBDockerrunVersion = "1",
+#     Image = { Name = "${aws_ecr_repository.frontend_repo.repository_url}:${var.frontend_image_tag}", Update = "true" },
+#     Ports = [{ ContainerPort = 3000 }]
+#   })
+# }
+# resource "aws_s3_object" "frontend_dockerrun" {
+#   bucket  = aws_s3_bucket.upload_bucket.id
+#   key     = "Dockerrun.aws.json.${random_string.suffix.result}"
+#   content = local.frontend_dockerrun_content
+#   etag    = md5(local.frontend_dockerrun_content)
+# }
+# resource "aws_elastic_beanstalk_application_version" "frontend_app_version" {
+#   name        = "${local.project_name}-frontend-v1-${random_string.suffix.result}"
+#   application = aws_elastic_beanstalk_application.frontend_app.name
+#   bucket      = aws_s3_bucket.upload_bucket.id
+#   key         = aws_s3_object.frontend_dockerrun.key
+#   description = "Frontend application version from ECR"
+# }
+# resource "aws_elastic_beanstalk_environment" "frontend_env" {
+#   name                = "${local.project_name}-frontend-env"
+#   application         = aws_elastic_beanstalk_application.frontend_app.name
+#   solution_stack_name = "64bit Amazon Linux 2023 v4.5.1 running Docker"
+#   version_label       = aws_elastic_beanstalk_application_version.frontend_app_version.name
+#
+#   # Zmienne środowiskowe zostają bez zmian
+#
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application:environment"
+#     name      = "VITE_AUTH_API_URL"
+#     value     = "http://${aws_lb.main_alb.dns_name}/api/auth"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application:environment"
+#     name      = "VITE_CHAT_API_URL" # POPRAWNA NAZWA
+#     value     = "${aws_api_gateway_stage.chat_api_stage_v1.invoke_url}/messages"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application:environment"
+#     name      = "VITE_FILE_API_URL" # POPRAWNA NAZWA
+#     value     = "http://${aws_lb.main_alb.dns_name}/api/files"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application:environment"
+#     name      = "VITE_NOTIFICATION_API_URL" # POPRAWNA NAZWA
+#     value     = "http://${aws_lb.main_alb.dns_name}/api/notifications"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application:environment"
+#     name      = "TF_DEPENDENCIES_READY"
+#     value     = "ALB: ${aws_lb.main_alb.id}, APIGW: ${aws_api_gateway_rest_api.chat_api.id}, SG: ${aws_security_group.eb_sg.id}"
+#   }
+#   # --- DODAJ TE BLOKI ---
+#   setting {
+#     namespace = "aws:ec2:vpc"
+#     name      = "VPCId"
+#     value     = data.aws_vpc.default.id
+#   }
+#   setting {
+#     namespace = "aws:ec2:vpc"
+#     name      = "Subnets"
+#     # Używamy join, ponieważ EB oczekuje stringa z podsieciami po przecinku
+#     value     = join(",", data.aws_subnets.default.ids)
+#   }
+#   setting {
+#     # Upewnij się, że instancje w EB dostają publiczne IP, aby mogły np. pobrać obraz z ECR
+#     namespace = "aws:ec2:vpc"
+#     name      = "AssociatePublicIpAddress"
+#     value     = "true"
+#   }
+#   setting {
+#     namespace = "aws:autoscaling:launchconfiguration"
+#     name      = "SecurityGroups"
+#     value     = aws_security_group.eb_sg.id # Przypisujemy ID naszej nowej grupy
+#   }
+#   setting {
+#     namespace = "aws:autoscaling:launchconfiguration"
+#     name      = "IamInstanceProfile"
+#     value     = var.lab_instance_profile_name
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:environment"
+#     name      = "ServiceRole"
+#     value     = var.lab_role_arn # Używamy pełnego ARN roli LabRole
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+#     name      = "StreamLogs"
+#     value     = "true"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+#     name      = "DeleteOnTerminate"
+#     value     = "true"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:cloudwatch:logs"
+#     name      = "RetentionInDays"
+#     value     = "7"
+#   }
+#   setting {
+#     namespace = "aws:elasticbeanstalk:environment:process:default"
+#     name      = "HealthCheckPath"
+#     value     = "/" # Upewnij się, że health check sprawdza ścieżkę główną
+#   }
+#
+#   setting {
+#     namespace = "aws:elasticbeanstalk:application"
+#     name      = "Application Healthcheck URL"
+#     value     = "/" # To jest to samo, ale dla innej warstwy konfiguracji
+#   }
+#   setting {
+#     namespace = "aws:autoscaling:launchconfiguration"
+#     name      = "InstanceType"
+#     value     = "t2.micro" # <--- ZMIANA NA BARDZIEJ DOSTĘPNY TYP
+#   }
+#
+#   wait_for_ready_timeout = "40m"
+#   tags                   = local.common_tags
+#   # Zależność jest teraz od ZAKOŃCZENIA opóźnienia, które czeka na regułę.
+#   depends_on = [time_sleep.wait_for_propagation]
+# }
 # Ten zasób wstrzymuje wykonanie Terraformu, aby dać AWS czas
 # na pełną propagację informacji o nowej grupie bezpieczeństwa.
 # Ten zasób wstrzymuje wykonanie Terraformu, aby dać AWS czas
 # na pełną propagację informacji o nowo stworzonych zasobach sieciowych.
-resource "time_sleep" "wait_for_propagation" {
-  # Czekamy 30 sekund. To powinno wystarczyć.
-  create_duration = "30s"
-
-  # WAŻNE: Ta pauza uruchomi się dopiero PO pomyślnym utworzeniu
-  # grupy bezpieczeństwa dla EB. W ten sposób tworzymy barierę.
-  depends_on = [aws_security_group.eb_sg]
-}
+# resource "time_sleep" "wait_for_propagation" {
+#   # Czekamy 30 sekund. To powinno wystarczyć.
+#   create_duration = "30s"
+#
+#   # WAŻNE: Ta pauza uruchomi się dopiero PO pomyślnym utworzeniu
+#   # grupy bezpieczeństwa dla EB. W ten sposób tworzymy barierę.
+#   depends_on = [aws_security_group.eb_sg]
+# }
 
 # --- Wyjścia (Outputs) ---
 output "alb_dns_name" {
@@ -1474,8 +1498,8 @@ output "alb_dns_name" {
 }
 
 output "frontend_url" {
-  description = "URL of the deployed frontend application (Elastic Beanstalk)"
-  value       = "http://${aws_elastic_beanstalk_environment.frontend_env.cname}"
+  description = "URL of the deployed frontend application (ALB)"
+  value       = "http://${aws_lb.main_alb.dns_name}" # Teraz frontend jest dostępny pod adresem ALB
 }
 
 output "cognito_user_pool_id" {
@@ -1552,10 +1576,10 @@ output "ecs_cluster_name" {
   value       = aws_ecs_cluster.main_cluster.name
 }
 
-output "eb_environment_name" {
-  description = "Name of the Elastic Beanstalk environment"
-  value       = aws_elastic_beanstalk_environment.frontend_env.name
-}
+# output "eb_environment_name" {
+#   description = "Name of the Elastic Beanstalk environment"
+#   value       = aws_elastic_beanstalk_environment.frontend_env.name
+# }
 output "ecs_service_names" {
   description = "A map of ECS service names"
   value = {

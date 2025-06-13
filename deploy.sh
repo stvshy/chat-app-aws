@@ -121,15 +121,20 @@ aws lambda update-function-code --function-name "${GET_RECEIVED_LAMBDA_NAME}" --
 aws lambda update-function-code --function-name "${MARK_READ_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_CHAT_HANDLERS_S3_KEY}" > /dev/null
 aws lambda update-function-code --function-name "${DB_INIT_LAMBDA_NAME}" --s3-bucket "${LAMBDA_BUCKET_NAME}" --s3-key "${LAMBDA_DB_INITIALIZER_S3_KEY}" > /dev/null
 echo "INFO: Funkcje Lambda zaktualizowane."
-
 echo "INFO: Wymuszanie nowego wdrożenia dla usług ECS..."
 CLUSTER_NAME=$(cd ./terraform && terraform output -raw ecs_cluster_name)
-ECS_SERVICES_JSON=$(cd ./terraform && terraform output -json ecs_service_names)
-SERVICE_NAMES=$(echo "${ECS_SERVICES_JSON}" | jq -r '.[]')
 
-for service_name in $SERVICE_NAMES; do
-  echo "  -> Aktualizacja usługi: ${service_name}"
-  aws ecs update-service --cluster "${CLUSTER_NAME}" --service "${service_name}" --force-new-deployment --region "${AWS_REGION}" > /dev/null
+# --- DODAJ TĘ LINIĘ DO DEBUGOWANIA ---
+echo "DEBUG: Sprawdzanie tożsamości AWS, której użyje skrypt..."
+aws sts get-caller-identity
+# --- KONIEC LINII DO DEBUGOWANIA ---
+
+echo "INFO: Pobieranie nazw usług ECS do aktualizacji..."
+(cd ./terraform && terraform output -json ecs_service_names) | jq -r '.[]' | tr -d '\r' | while IFS= read -r service_name; do
+  if [ -n "$service_name" ]; then
+    echo "  -> Aktualizacja usługi: [${service_name}]" # Dodaję nawiasy kwadratowe, żeby zobaczyć ewentualne białe znaki
+    aws ecs update-service --cluster "${CLUSTER_NAME}" --service "${service_name}" --force-new-deployment --region "${AWS_REGION}" > /dev/null
+  fi
 done
 echo "INFO: Usługi ECS zaktualizowane."
 echo ">>> Aktualizacja usług zakończona."

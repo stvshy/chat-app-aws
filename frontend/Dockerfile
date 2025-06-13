@@ -4,21 +4,21 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Ta komenda usunie plik .env i użyje względnych ścieżek
 RUN npm run build
 
 # Etap 2: Serwowanie statycznych plików za pomocą serve
 FROM node:20-alpine
-# Zainstaluj `serve` i `gettext` (dostarcza `envsubst`)
-RUN apk add --no-cache gettext
+# Zainstaluj tylko `serve`
 RUN npm install -g serve
 
 WORKDIR /app
 
+# Kopiuj tylko zbudowaną aplikację i nowy, prosty entrypoint
 COPY --from=builder /app/dist ./dist
 COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh                # Upewnij się, że jest wykonywalny
+RUN chmod +x /entrypoint.sh
 
-# PORT jest już ustawiany przez Elastic Beanstalk, ale możemy zdefiniować domyślny
 ENV PORT=3000
 EXPOSE 3000
 

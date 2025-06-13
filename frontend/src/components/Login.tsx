@@ -9,17 +9,17 @@ export default function Login({
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
     // Użyj nowej zmiennej środowiskowej dla API autoryzacji
-    const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
+    // const authApiUrl = import.meta.env.VITE_AUTH_API_URL;
 
     const handleLogin = async () => {
         // Sprawdź, czy URL jest zdefiniowany
-        if (!authApiUrl) {
-            alert("Auth API URL is not configured!");
-            return;
-        }
+        // if (!authApiUrl) {
+        //     alert("Auth API URL is not configured!");
+        //     return;
+        // }
         try {
             // Użyj authApiUrl zamiast starego apiUrl/api/auth/login
-            const res = await fetch(`${authApiUrl}/login`, {
+            const res = await fetch(`/api/auth/login`,{
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ username, password }),

@@ -28,7 +28,7 @@ export default function Chat({
     const [showSent, setShowSent] = useState(false);
 
     const chatApiUrl = import.meta.env.VITE_CHAT_API_URL;
-    const fileApiUrl = import.meta.env.VITE_FILE_API_URL;
+    const fileApiUrlPrefix = "/api/files";
 
     // Usunięto logikę IntersectionObserver
 
@@ -102,15 +102,13 @@ export default function Chat({
     };
 
     useEffect(() => {
-        console.log("Chat.tsx: Fetching messages due to change in props or mount.");
         fetchSentMessages();
         fetchReceivedMessages();
-    }, [chatApiUrl, username, token]);
+    }, [chatApiUrl, username, token]); // chatApiUrl może się ładować z opóźnieniem
 
     const sendMessage = async () => {
-        // ... (bez zmian)
-        if (!chatApiUrl || !fileApiUrl) {
-            alert("API URLs are not configured!");
+        if (!chatApiUrl) {
+            alert("Chat API URL is not configured!");
             return;
         }
         let fileIdentifier: string | null = null;
@@ -118,7 +116,8 @@ export default function Chat({
             if (file) {
                 const fileFormData = new FormData();
                 fileFormData.append("file", file);
-                const fileRes = await fetch(`${fileApiUrl}/upload`, {
+                // Używamy względnej ścieżki do file-service (ALB)
+                const fileRes = await fetch(`${fileApiUrlPrefix}/upload`, {
                     method: "POST",
                     headers: { Authorization: `Bearer ${token}` },
                     body: fileFormData,
@@ -126,23 +125,14 @@ export default function Chat({
                 if (fileRes.ok) {
                     const fileData = await fileRes.json();
                     fileIdentifier = fileData.fileId;
-                    if (!fileIdentifier) {
-                        throw new Error("fileId not found in file service response");
-                    }
                 } else {
                     const errorText = await fileRes.text();
-                    console.error("Error uploading file:", errorText);
                     alert("Error uploading file: " + errorText);
                     return;
                 }
             }
-            const messageBody: {
-                author: string;
-                content: string;
-                recipient: string;
-                fileId?: string | null;
-            } = { author: username, content, recipient, fileId: fileIdentifier };
-
+            const messageBody = { author: username, content, recipient, fileId: fileIdentifier };
+            // Używamy pełnego URL-a z API Gateway
             const msgRes = await fetch(chatApiUrl, {
                 method: "POST",
                 headers: {
@@ -160,7 +150,6 @@ export default function Chat({
                 setFile(null);
             } else {
                 const errorText = await msgRes.text();
-                console.error("Error sending message:", errorText);
                 alert("Error sending message: " + errorText);
             }
         } catch (error) {
@@ -236,9 +225,9 @@ export default function Chat({
                                     <p className={`message-content ${!msg.read ? "unread-content" : ""}`}>
                                         {msg.content}
                                     </p>
-                                    {msg.fileId && fileApiUrl && (
+                                    {msg.fileId && (
                                         <p>
-                                            <a href={`${fileApiUrl}/download/${msg.fileId}`} target="_blank" rel="noreferrer">
+                                            <a href={`${fileApiUrlPrefix}/download/${msg.fileId}`} target="_blank" rel="noreferrer">
                                                 Download file
                                             </a>
                                         </p>
@@ -267,8 +256,8 @@ export default function Chat({
                                             <div key={msg.id} className="message-card sent-message-card">
                                                 <p><strong>{msg.recipientUsername || "Broadcast"}</strong></p>
                                                 <p>{msg.content}</p>
-                                                {msg.fileId && fileApiUrl && (
-                                                    <p><a href={`${fileApiUrl}/download/${msg.fileId}`} target="_blank" rel="noreferrer">Download file</a></p>
+                                                {msg.fileId && (
+                                                    <p><a href={`${fileApiUrlPrefix}/download/${msg.fileId}`} target="_blank" rel="noreferrer">Download file</a></p>
                                                 )}
                                             </div>
                                         ))}
