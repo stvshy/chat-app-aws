@@ -14,14 +14,14 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
 //import software.amazon.awssdk.services.sqs.model.SendMessageRequest as SqsSendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SqsException;
-
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.sql.SQLException;
 import java.util.HashMap;
 import java.util.Map;
 
 public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestEvent, APIGatewayProxyResponseEvent> {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper().registerModule(new JavaTimeModule());
     private final MessageDao messageDao = new MessageDao();
     private final SqsClient sqsClient;
     private final String queueUrl;

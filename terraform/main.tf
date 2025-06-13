@@ -297,6 +297,18 @@ resource "aws_security_group" "lambda_vpc_sg" {
   description = "Security group for Lambda functions in VPC"
   vpc_id      = data.aws_vpc.default.id
   tags        = local.common_tags
+
+  # --- DODAJ TĘ REGUŁĘ ---
+  # Zezwól na ruch wewnątrz tej samej grupy bezpieczeństwa.
+  # To pozwoli Lambdom komunikować się z zasobami (jak VPC Endpoint),
+  # które też używają tej grupy.
+  ingress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    self        = true # Kluczowy atrybut!
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -1250,6 +1262,7 @@ resource "null_resource" "invoke_db_initializer" {
   # Ta sekcja będzie wykonana tylko wtedy, gdy zmieni się ARN bazy danych (czyli przy jej tworzeniu)
   triggers = {
     db_instance_arn = aws_db_instance.chat_db.arn
+    run_always      = time_static.timestamp.rfc3339
   }
 
   # Wywołaj funkcję Lambda
