@@ -28,7 +28,7 @@ terraform { # Blok 'terraform' to takie ustawienia globalne dla całego projektu
 # Mówimy Terraformowi, że chcemy używać AWS.
 provider "aws" {
   # Tutaj ustawiamy region AWS, czyli fizyczną lokalizację centrum danych, w którym będą tworzone nasze zasoby.
-  region = "us-east-1"    # Ważne, żeby wszystkie zasoby były w tym samym regionie.
+  region = "us-east-1"    # Ważne, aby wszystkie zasoby były w tym samym regionie.
 }
 
 # Ten blok 'data' to coś, co nie tworzy nowego zasobu, tylko przygotowuje dane.
@@ -46,7 +46,17 @@ data "archive_file" "dummy_lambda_zip" {
     content  = "dummy content" # Treść, która znajdzie się w pliku.
     filename = "placeholder.txt"  # Nazwa tego pliku wewnątrz archiwum ZIP.
   }
-}
+} # Terraform, zanim cokolwiek stworzy w AWS, musi dokładnie wiedzieć, jaki kod ma wrzucić do Lambdy i obliczyć jego "odcisk palca" (hash)
+# Jednak mój prawdziwy kod Lambdy (plik JAR) jest kompilowany i tworzony (w skrypcie deploy.sh) na komputerze dopiero po tym,
+# jak Terraform zacznie stawiać infrastrukturę.
+# Więc w momencie, gdy Terraform potrzebował tego "odcisku palca" prawdziwego JARa, ten plik jeszcze nie istniał.
+# Żeby Terraform się nie buntował i mógł w ogóle stworzyć funkcję Lambda w AWS, pusty "dummy" plik ZIP.
+# On z tego pliku obliczył "odcisk palca" i stworzył pustą "powłokę" funkcji Lambda w chmurze.
+# Dopiero później, po tym jak mój program Java zbudował prawdziwy plik JAR, użyłem innego narzędzia (AWS CLI),
+# żeby podmienić ten pusty kod na mój właściwy JAR w już istniejącej funkcji Lambda w AWS
+
+
+
 
 # --- Zmienne wejściowe dla tagów obrazów Docker ---
 # Bloki 'variable' to miejsca, gdzie możemy zdefiniować wartości, które mogą być zmieniane
@@ -88,7 +98,7 @@ resource "random_string" "suffix" {
   length  = 4   # Chcemy, żeby miał 4 znaki długości.
   special = false  # Nie chcemy znaków specjalnych.
   upper   = false  # Nie chcemy wielkich liter.
-}
+} # Głównie pod s3, ale też dla innych zasobów, żeby mieć unikalne nazwy.
 
 # Tworzymy zasób 'time_static', który łapie aktualny czas w momencie tworzenia.
 # Jest używany głównie po to, by wymusić ponowne tworzenie zasobów, które się od niego odwołują.
@@ -125,12 +135,14 @@ locals {
       image_tag          = var.auth_service_image_tag  # Tag (wersja) obrazu Docker, pobierany ze zmiennej wejściowej.
       log_group_name     = aws_cloudwatch_log_group.auth_service_logs.name  # Nazwa grupy logów w CloudWatch, gdzie będą trafiać logi z kontenera.
       target_group_arn   = aws_lb_target_group.auth_tg.arn  # ARN grupy docelowej w Load Balancerze, do której będzie kierowany ruch.
+      # ARN (Amazon Resource Name) to taki unikalny identyfikator dla praktycznie każdego zasobu, który chcemy stworzyć w AWS
       environment_vars   = [  # Lista zmiennych środowiskowych, które zostaną wstrzyknięte do kontenera.
         { name = "SPRING_PROFILES_ACTIVE", value = "aws" },  # Ustawia profil Springa na 'aws'.
         { name = "AWS_REGION", value = data.aws_region.current.name },  # Przekazuje aktualny region AWS.
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id },  # ID puli użytkowników Cognito.
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id },  # ID klienta aplikacji w Cognito.
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" }, # Adres do walidacji tokenów JWT.
+        # ^ To mówi naszym aplikacjom Spring Boot, gdzie mają pytać Cognito, czy tokeny (bilety wstępu) od użytkowników są prawdziwe i ważne.
         { name = "AWS_DYNAMODB_TABLE_NAME_USER_PROFILES", value = aws_dynamodb_table.user_profiles_table.name },  # Nazwa tabeli DynamoDB z profilami.
         { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_lb.main_alb.dns_name}" }  # Adres frontendu dozwolony przez CORS.
       ]
@@ -148,6 +160,7 @@ locals {
         { name = "AWS_COGNITO_USER_POOL_ID", value = aws_cognito_user_pool.chat_pool.id }, # ID puli użytkowników Cognito.
         { name = "AWS_COGNITO_CLIENT_ID", value = aws_cognito_user_pool_client.chat_pool_client.id }, # ID klienta aplikacji w Cognito.
         { name = "SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI", value = "https://cognito-idp.${data.aws_region.current.name}.amazonaws.com/${aws_cognito_user_pool.chat_pool.id}" }, # Adres do walidacji tokenów JWT.
+        # ^ To mówi naszym aplikacjom Spring Boot, gdzie mają pytać Cognito, czy tokeny (bilety wstępu) od użytkowników są prawdziwe i ważne.
         { name = "AWS_S3_BUCKET_NAME", value = aws_s3_bucket.upload_bucket.bucket },  # Nazwa bucketa S3 na pliki.
         { name = "AWS_DYNAMODB_TABLE_NAME_FILE_METADATA", value = aws_dynamodb_table.file_metadata_table.name }, # Nazwa tabeli DynamoDB z metadanymi plików.
         { name = "APP_CORS_ALLOWED_ORIGIN_FRONTEND", value = "http://${aws_lb.main_alb.dns_name}" }  # Adres frontendu dozwolony przez CORS.
@@ -163,7 +176,7 @@ locals {
       environment_vars = [
         # Przekazujemy adres URL API czatu do frontendu, żeby wiedział, gdzie wysyłać zapytania.
         { name = "VITE_CHAT_API_URL", value = "${aws_api_gateway_stage.chat_api_stage_v1.invoke_url}/messages" }
-      ]
+      ] # jeśli chcemy wysłać wiadomość na czat, pobrać wysłane wiadomości, czy zaznaczyć wiadomość jako przeczytaną, to wszystkie te operacje są pod tym adresem
     }
     # Konfiguracja dla 'notification-service'
     (local.notification_service_name) = {
@@ -236,6 +249,9 @@ resource "aws_lb_listener_rule" "frontend_rule" {
     path_pattern { # Warunek oparty na ścieżce w adresie URL.
       values = ["/*"] # Wartość "/*" oznacza "złap wszystko", co czyni tę regułę domyślną.
     }
+    # jeśli adres nie pasuje do żadnego z API
+    # (np. /api/auth), to ruch trafia do frontendu. Bez tego strona
+    # główna (logowania i rejestracji) by się nie załadowała.
   }
 }
 
@@ -262,46 +278,63 @@ data "aws_internet_gateway" "default" {
 }
 
 # 3. Zarządzaj domyślną tablicą routingu
-#    Ten zasób odnajdzie domyślną tablicę routingu dla VPC i pozwoli nam
-#    zadeklarować, jakie trasy mają w niej być. Jeśli trasa już istnieje,
-#    Terraform po prostu przejmie nad nią zarządzanie.
+#    Ta reguła ("route") jest kluczowa: mówi, że cały ruch do internetu ("0.0.0.0/0") ma iść przez naszą
+#    Bramę Internetową. Bez tego, serwisy w VPC nie miałyby dostępu do świata.
 resource "aws_default_route_table" "main_rt" {
-  # Używamy poprawnego atrybutu z data.aws_vpc
-  default_route_table_id = data.aws_vpc.default.main_route_table_id # <<< POPRAWKA TUTAJ
+  # Wskazujemy Terraformowi, że chcemy zarządzać GŁÓWNĄ tablicą routingu dla naszej domyślnej sieci VPC.
+  default_route_table_id = data.aws_vpc.default.main_route_table_id
 
-  # Definiujemy trasę do internetu
+  # Tutaj definiujemy samą regułę routingu
   route {
+    # Cel: każdy adres spoza naszej sieci VPC, czyli w praktyce cały internet.
     cidr_block = "0.0.0.0/0"
+
+    # Kierunek: cały ten ruch ma być kierowany do Bramy Internetowej (nasze wyjście do świata).
     gateway_id = data.aws_internet_gateway.default.id
   }
 
+  # Standardowe etykiety (tagi), aby łatwiej było znaleźć ten zasób w konsoli AWS.
   tags = merge(local.common_tags, {
     Name = "${local.project_name}-default-rt"
   })
 }
 
+
 # --- Grupy bezpieczeństwa ---
 # Grupy bezpieczeństwa działają jak wirtualny firewall dla zasobów, kontrolując ruch przychodzący i wychodzący.
 
 # Grupa bezpieczeństwa dla Application Load Balancera (ALB).
+# Działa jak firewall: określa, jaki ruch może wejść do ALB i z niego wyjść.
 resource "aws_security_group" "alb_sg" {
   name        = "${local.project_name}-alb-sg"  # Unikalna nazwa grupy.
   description = "Security group for ALB"
   vpc_id      = data.aws_vpc.default.id   # Przypisujemy do naszej VPC.
-  ingress { # Reguły ruchu przychodzącego (ingress).
-    # Zezwalamy na ruch na porcie 80 (HTTP).
+
+  # Definiujemy, jaki ruch może WEJŚĆ do Load Balancera.
+  ingress {
+    # Port 80 to standardowy port dla ruchu webowego (HTTP).
+    # Otwieramy go, aby użytkownicy mogli w ogóle połączyć się z naszą stroną.
     from_port   = 80
     to_port     = 80
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"] # Z dowolnego miejsca w internecie.
+
+    # Zezwalamy na ruch z każdego adresu IP na świecie ("0.0.0.0/0"),
+    # bo ALB jest publicznie dostępny.
+    cidr_blocks = ["0.0.0.0/0"]
   }
-  egress { # Reguły ruchu wychodzącego (egress).
+
+  # Definiujemy, jaki ruch może WYJŚĆ z Load Balancera.
+  egress {
+    # Porty 0 i protokół "-1" to specjalne wartości oznaczające "cały ruch".
+    # Pozwalamy ALB swobodnie wysyłać ruch dalej - do naszych wewnętrznych
+    # serwisów (Fargate) oraz z powrotem do użytkowników.
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-  tags = local.common_tags  # Wspólne tagi
+
+  tags = local.common_tags  # Wspólne tagi dla łatwiejszej identyfikacji.
 }
 
 # resource "aws_security_group" "fargate_sg" {
@@ -381,7 +414,7 @@ resource "aws_security_group" "internal_sg" {
     protocol  = "-1" # Dowolny protokół.
     from_port = 0    # Dowolny port.
     to_port   = 0    # Dowolny port.
-    self      = true # 'self = true' oznacza, że źródłem ruchu może być inny zasób w tej samej grupie.
+    self      = true # oznacza, że źródłem ruchu może być inny zasób w tej samej grupie.
   }
 
   # --- Reguła wychodząca (bez zmian) ---
@@ -396,7 +429,7 @@ resource "aws_security_group" "internal_sg" {
 }
 
 # --- Repozytoria ECR ---
-# ECR (Elastic Container Registry) to usługa AWS do przechowywania obrazów Docker. Tworzymy osobne repozytorium dla każdej mikroserwisuy.
+# ECR (Elastic Container Registry) to usługa AWS do przechowywania obrazów Docker. Tworzymy osobne repozytorium dla każdego mikroserwisu.
 # Repozytorium dla auth-service.
 resource "aws_ecr_repository" "auth_service_repo" {
   name         = "${local.project_name_prefix}/${local.auth_service_name}" # Nazwa repozytorium, zgodna z konwencją projektu.
@@ -405,21 +438,21 @@ resource "aws_ecr_repository" "auth_service_repo" {
 }
 # Repozytorium dla file-service.
 resource "aws_ecr_repository" "file_service_repo" {
-  name         = "${local.project_name_prefix}/${local.file_service_name}" # POPRAWIONA NAZWA
+  name         = "${local.project_name_prefix}/${local.file_service_name}"
   tags         = local.common_tags
-  force_delete = true # Jeśli usuniemy repozytorium przez Terraform, to zostanie ono usunięte nawet jeśli zawiera obrazy. Użyteczne w środowiskach deweloperskich.
+  force_delete = true
 }
 # Repozytorium dla notification-service.
 resource "aws_ecr_repository" "notification_service_repo" {
-  name         = "${local.project_name_prefix}/${local.notification_service_name}" # POPRAWIONA NAZWA
+  name         = "${local.project_name_prefix}/${local.notification_service_name}"
   tags         = local.common_tags
-  force_delete = true # Jeśli usuniemy repozytorium przez Terraform, to zostanie ono usunięte nawet jeśli zawiera obrazy. Użyteczne w środowiskach deweloperskich.
+  force_delete = true
 }
 # Repozytorium dla frontendu.
 resource "aws_ecr_repository" "frontend_repo" {
-  name         = "${local.project_name_prefix}/${local.frontend_name}" # POPRAWIONA NAZWA
+  name         = "${local.project_name_prefix}/${local.frontend_name}"
   tags         = local.common_tags
-  force_delete = true # Jeśli usuniemy repozytorium przez Terraform, to zostanie ono usunięte nawet jeśli zawiera obrazy. Użyteczne w środowiskach deweloperskich.
+  force_delete = true
 }
 
 # --- Klaster ECS ---
@@ -438,9 +471,17 @@ resource "aws_lb" "main_alb" {
   security_groups    = [aws_security_group.alb_sg.id] # Przypisujemy mu grupę bezpieczeństwa, którą stworzyliśmy wcześniej.
   subnets            = data.aws_subnets.default.ids # ALB musi działać w co najmniej dwóch podsieciach dla wysokiej dostępności.
   tags               = local.common_tags
-  idle_timeout       = 60 # Czas bezczynności połączenia (w sekundach).
-  enable_http2       = true  # Włączamy obsługę protokołu HTTP/2.
-  drop_invalid_header_fields = false  # Nie odrzucamy zapytań z nieprawidłowymi nagłówkami.
+  # Utrzymuje połączenie otwarte przez 60s, nawet gdy nic się nie dzieje,
+  # co przyspiesza kolejne akcje użytkownika.
+  idle_timeout       = 60
+
+  # Włącza obsługę nowoczesnego i szybszego protokołu HTTP/2,
+  # co przyspiesza ładowanie strony.
+  enable_http2       = true
+
+  # Pozwala na przekazywanie zapytań z niestandardowymi nagłówkami HTTP.
+  # Zwiększa to kompatybilność, np. z niestandardowymi klientami API.
+  drop_invalid_header_fields = false
 }
 
 # Listener dla ALB. Nasłuchuje na określonym porcie i protokole na przychodzący ruch.
@@ -470,34 +511,47 @@ resource "aws_lb_listener" "http_listener" {
 # Grupa docelowa to zbiór celów (w naszym przypadku kontenerów Fargate), do których ALB przesyła ruch.
 
 # Grupa docelowa dla auth-service.
+# Jest to zbiór kontenerów Fargate dla 'auth-service', do których ALB kieruje ruch.
 resource "aws_lb_target_group" "auth_tg" {
-  # Nazwa grupy.
+  # Nazwa grupy docelowej, unikalna w regionie.
   name        = "${local.project_name}-auth-tg"
-  # Port, na którym nasłuchuje aplikacja w kontenerze.
+  # Port, na którym aplikacja Spring Boot w kontenerze Fargate nasłuchuje na żądania.
   port        = 8081
   protocol    = "HTTP"
   vpc_id      = data.aws_vpc.default.id
+  # 'ip' jest wymagane dla usług Fargate, bo ALB kieruje ruch bezpośrednio do adresu IP kontenera.
   target_type = "ip"
-  # Konfiguracja sprawdzania stanu zdrowia.
+
+  # Konfiguracja sprawdzania stanu zdrowia (Health Check).
+  # ALB regularnie odpytuje nasze kontenery, aby sprawdzić, czy działają poprawnie.
+  # Jeśli kontener nie odpowiada poprawnie, ALB przestaje wysyłać do niego ruch.
   health_check {
     enabled             = true
-    # Musi być 5 udanych sprawdzeń z rzędu, aby uznać cel za zdrowy.
+    # Kontener musi odpowiedzieć poprawnie 5 razy z rzędu, aby ALB uznał go za "zdrowy"
+    # i zaczął kierować do niego ruch.
     healthy_threshold   = 5
-    # Sprawdzanie co 60 sekund.
+    # ALB wysyła zapytanie sprawdzające stan zdrowia co 60 sekund.
     interval            = 60
-    # Oczekiwany kod odpowiedzi HTTP.
+    # ALB oczekuje odpowiedzi z kodem HTTP pomiędzy 200 a 299, co oznacza sukces.
     matcher             = "200-299"
-    # Ścieżka, którą ALB będzie odpytywać.
+    # Ścieżka, pod którą ALB wysyła zapytanie. /actuator/health to standardowy endpoint
+    # dodawany przez Spring Boot Actuator, który zwraca status "UP" (kod 200), gdy aplikacja działa.
     path                = "/actuator/health"
-    port                = "traffic-port" # Użyj portu, na który kierowany jest ruch.
+    # Używa tego samego portu, na który kierowany jest normalny ruch (tutaj 8081).
+    port                = "traffic-port"
     protocol            = "HTTP"
-    # Czas oczekiwania na odpowiedź.
+    # ALB czeka maksymalnie 20 sekund na odpowiedź od aplikacji. Jeśli jej nie otrzyma,
+    # uznaje próbę za nieudaną.
     timeout             = 20
-    # 5 nieudanych sprawdzeń z rzędu, aby uznać cel za niezdrowy.
+    # Jeśli kontener 5 razy z rzędu nie odpowie poprawnie, ALB oznacza go jako "niezdrowy"
+    # i przestaje do niego kierować ruch.
     unhealthy_threshold = 5
   }
   tags = local.common_tags
-  # Cykl życia zasobu. 'create_before_destroy' zapewnia płynne wdrożenia bez przestojów.
+
+  # Konfiguracja cyklu życia zasobu. 'create_before_destroy = true' jest kluczowe dla
+  # wdrożeń bez przestojów. Terraform najpierw stworzy
+  # nową grupę docelową, a dopiero potem usunie starą, co zapewnia ciągłość działania.
   lifecycle {
     create_before_destroy = true
   }
@@ -530,6 +584,7 @@ resource "aws_lb_target_group" "notification_tg" {
   }
   tags = local.common_tags
 }
+
 
 # --- Reguły Listenera ALB ---
 # Te reguły mówią listenerowi, jak kierować ruch na podstawie ścieżki URL.
@@ -643,7 +698,7 @@ resource "aws_db_instance" "chat_db" {
   db_subnet_group_name = aws_db_subnet_group.rds_subnet_group.name
   # Przypisujemy grupę bezpieczeństwa.
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
-  # Nie twórz końcowego snapshotu przy usuwaniu instancji (dobre dla dev).
+  # Nie twórz końcowego snapshotu przy usuwaniu instancji
   skip_final_snapshot  = true
   tags = local.common_tags
 }
@@ -697,13 +752,25 @@ resource "aws_dynamodb_table" "notifications_history_table" {
     name = "userId"
     type = "S"
   }
-  # Definiujemy globalny indeks dodatkowy (GSI).
-  # Pozwala on na efektywne wyszukiwanie rekordów po innym kluczu niż główny (tutaj: po userId i timestamp).
+  # Definicja Globalnego Indeksu Wtórnego (GSI).
+  # To jest jakby "alternatywna tabela" z tymi samymi danymi, ale ułożonymi
+  # inaczej, co pozwala nam na wykonywanie zupełnie nowych, wydajnych zapytań.
   global_secondary_index {
+    # Nazwa naszego nowego indeksu. Musi być unikalna dla tej tabeli.
     name            = "userId-timestamp-index"
+
+    # Definiujemy nowy klucz główny dla tego indeksu.
+    # Dzięki temu możemy teraz wyszukiwać dane po 'userId', a nie tylko po 'notificationId'.
     hash_key        = "userId"
-    range_key       = "timestamp" # Klucz sortujący.
-    projection_type = "ALL" # Kopiuj wszystkie atrybuty do indeksu.
+
+    # Definiujemy klucz sortujący dla tego indeksu. Dzięki temu, gdy zapytamy o wszystkie
+    # powiadomienia dla danego 'userId', DynamoDB zwróci je już posortowane po 'timestamp'.
+    range_key       = "timestamp"
+
+    # Określamy, jakie dane z oryginalnego rekordu mają być skopiowane do tego indeksu.
+    # 'ALL' oznacza, że kopiujemy cały rekord. Dzięki temu, gdy odpytamy indeks,
+    # dostaniemy od razu wszystkie dane i nie musimy dodatkowo odpytywać głównej tabeli.
+    projection_type = "ALL"
   }
   tags = local.common_tags
 }
@@ -716,29 +783,40 @@ resource "aws_s3_bucket" "upload_bucket" {
   # Nazwa bucketa musi być globalnie unikalna, stąd dodajemy losowy sufiks.
   bucket        = "${local.project_name_prefix}-uploads-${random_string.suffix.result}"
   tags          = local.common_tags
-  # Wymuś usunięcie bucketa nawet, jeśli nie jest pusty (dobre dla dev).
+  # Wymuś usunięcie bucketa (kiedy niszczymy infrastrukture) nawet, jeśli nie jest pusty
   force_destroy = true
 }
 # Blokada publicznego dostępu do bucketa. Ważne ze względów bezpieczeństwa.
+# Ten blok to nasz "strażnik bezpieczeństwa" dla bucketu S3.
+# Jego jedynym zadaniem jest upewnienie się, że nikt przez pomyłkę
+# nie udostępni tego bucketu (i jego zawartości) publicznie w internecie.
 resource "aws_s3_bucket_public_access_block" "upload_bucket_access_block" {
+  # Wskazujemy, którego bucketu ma pilnować ten "strażnik".
   bucket = aws_s3_bucket.upload_bucket.id
-  # Blokuj publiczne listy kontroli dostępu (ACL).
+
+  # Mówimy: "Nie pozwól NIKOMU ustawić publicznych uprawnień dla pojedynczych plików."
+  # To blokuje stare, mniej bezpieczne metody nadawania dostępu.
   block_public_acls       = true
-  # Blokuj publiczne polityki.
+
+  # Mówimy: "Nie pozwól NIKOMU przypisać do tego bucketu polityki,
+  # która udostępniałaby go publicznie." To jest najważniejsza blokada.
   block_public_policy     = true
-  # Ignoruj publiczne ACL.
+
+  # Mówimy: "Jeśli ktoś spróbuje ustawić publiczne uprawnienia dla pojedynczych plików,
+  # po prostu to zignoruj i nie rób nic." To dodatkowe zabezpieczenie.
   ignore_public_acls      = true
-  # Ogranicz publiczne buckety.
+
+  # Mówimy: "Jeśli jakakolwiek polityka przypisana do tego bucketu jest publiczna,
+  # zablokuj dostęp." To ostateczna blokada, która działa na poziomie całego konta.
   restrict_public_buckets = true
 }
+
 # Bucket do przechowywania kodu funkcji Lambda (plików .jar).
 resource "aws_s3_bucket" "lambda_code_bucket" {
   bucket        = "${local.project_name_prefix}-lambda-code-${random_string.suffix.result}"
   tags          = local.common_tags
   force_destroy = true
 }
-
-
 
 
 # --- AWS Cognito ---
@@ -757,19 +835,31 @@ resource "aws_cognito_user_pool" "chat_pool" {
   password_policy {
     minimum_length    = 6
     require_lowercase = true
-    require_numbers   = false # Uproszczone dla celów deweloperskich.
+    require_numbers   = false
     require_symbols   = false
     require_uppercase = false
   }
   tags = local.common_tags
 }
-# Klient puli użytkowników (User Pool Client) to aplikacja, która ma dostęp do tej puli.
+# Klient puli użytkowników (User Pool Client) to jakby "reprezentant" naszej aplikacji (frontendu) w systemie Cognito.
+# To przez niego nasza aplikacja będzie się komunikować z pulą użytkowników, aby np. logować użytkowników.
 resource "aws_cognito_user_pool_client" "chat_pool_client" {
+  # Nazwa naszego klienta aplikacji.
   name                = "${local.project_name}-client"
+
+  # Wskazujemy, do której puli użytkowników ten klient ma dostęp.
   user_pool_id        = aws_cognito_user_pool.chat_pool.id
-  # Nie generuj sekretu klienta, bo nasza aplikacja działa po stronie klienta (w przeglądarce).
+
+  # Nie generujemy "sekretu klienta" (client secret), co jest kluczowe.
+  # Nasz frontend działa w przeglądarce, więc nie ma bezpiecznego miejsca,
+  # żeby przechowywać taki sekret. Wyłączenie tego jest wymagane dla publicznych klientów.
   generate_secret     = false
-  # Określamy dozwolone przepływy uwierzytelniania.
+
+  # Tutaj jawnie określamy, jakie metody logowania są dozwolone dla tego klienta.
+  # Nasza aplikacja będzie mogła:
+  # 1. "ALLOW_USER_PASSWORD_AUTH": Logować użytkowników za pomocą ich loginu i hasła.
+  # 2. "ALLOW_REFRESH_TOKEN_AUTH": Używać "tokenu odświeżającego", aby automatycznie
+  #    przedłużać sesję zalogowanego użytkownika bez ponownego pytania go o hasło.
   explicit_auth_flows = ["ALLOW_USER_PASSWORD_AUTH", "ALLOW_REFRESH_TOKEN_AUTH"]
 }
 
@@ -783,6 +873,7 @@ resource "aws_sns_topic" "notifications_topic" {
   tags = local.common_tags
 }
 
+
 # --- Kolejka SQS ---
 # SQS (Simple Queue Service) to usługa kolejkowania wiadomości. Używamy jej do komunikacji między Lambdą a serwisem powiadomień.
 
@@ -792,9 +883,15 @@ resource "aws_sqs_queue" "chat_notifications_queue" {
   delay_seconds               = 0
   # Jak długo wiadomość ma być przechowywana w kolejce (w sekundach).
   message_retention_seconds   = 345600 # 4 dni
-  # Jak długo wiadomość jest niewidoczna dla innych konsumentów po pobraniu.
+
+  # Gdy nasz serwis pobierze wiadomość, staje się ona "niewidzialna" dla innych
+  # na 60 sekund. Daje to czas na jej przetworzenie i zapobiega sytuacji,
+  # w której dwa serwisy próbują przetworzyć tę samą wiadomość jednocześnie.
   visibility_timeout_seconds  = 60
-  # Jak długo SQS ma czekać na nową wiadomość (long polling).
+
+  # Włącza "long polling": jeśli kolejka jest pusta, AWS nie odpowiada od razu,
+  # ale czeka do 10 sekund, czy pojawi się nowa wiadomość. Zmniejsza to liczbę
+  # pustych zapytań i redukuje koszty.
   receive_wait_time_seconds   = 10
   tags                        = local.common_tags
 }
@@ -822,7 +919,7 @@ resource "aws_cloudwatch_log_group" "notification_service_logs" {
 }
 
 # --- Zmienna dla istniejącej roli IAM ---
-# Rola IAM to zbiór uprawnień. Zamiast tworzyć nową, używamy istniejącej roli 'LabRole', która ma szerokie uprawnienia (praktyka dla środowisk laboratoryjnych).
+# Rola IAM to zbiór uprawnień. Używamy istniejącej roli 'LabRole'
 variable "lab_role_arn" {
   description = "ARN of the existing LabRole"
   type        = string
@@ -891,7 +988,7 @@ resource "aws_ecs_service" "app_fargate_services" {
   cluster         = aws_ecs_cluster.main_cluster.id
   # ARN definicji zadania, którą ma uruchamiać usługa.
   task_definition = aws_ecs_task_definition.app_fargate_task_definitions[each.key].arn
-  # Typ uruchomienia - Fargate (serverless).
+  # Typ uruchomienia - Fargate
   launch_type     = "FARGATE"
   # Chcemy, żeby zawsze działała 1 instancja zadania.
   desired_count   = 1
@@ -958,27 +1055,46 @@ resource "aws_appautoscaling_target" "app_fargate_scaling_targets" {
   # Przestrzeń nazw usługi.
   service_namespace  = "ecs"
 }
-# Polityka skalowania (Scaling Policy) określa, kiedy skalowanie ma nastąpić.
+
+# Definiujemy politykę automatycznego skalowania. To jest "mózg", który decyduje,
+# KIEDY i DLACZEGO mamy dodawać lub usuwać kontenery Fargate dla naszych usług.
 resource "aws_appautoscaling_policy" "app_fargate_cpu_scaling_policies" {
   for_each = local.fargate_services
-  name               = "${local.project_name}-${each.key}-cpu-scaling"
-  # Typ polityki: śledzenie celu (Target Tracking).
+  name     = "${local.project_name}-${each.key}-cpu-scaling"
+
+  # "TargetTrackingScaling" to najprostszy i najczęstszy typ polityki. Mówimy AWS:
+  # "Pilnuj za mnie jednej metryki (np. użycia CPU) i utrzymuj ją na stałym poziomie".
   policy_type        = "TargetTrackingScaling"
+
+  # Te trzy linijki łączą tę politykę z wcześniej zdefiniowanym "celem skalowania"
+  # (zasobem aws_appautoscaling_target), mówiąc jej, CO ma skalować.
   resource_id        = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].resource_id
   scalable_dimension = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].scalable_dimension
   service_namespace  = aws_appautoscaling_target.app_fargate_scaling_targets[each.key].service_namespace
-  # Konfiguracja śledzenia celu.
+
+  # Szczegółowa konfiguracja naszej polityki śledzenia celu.
   target_tracking_scaling_policy_configuration {
-    # Używamy predefiniowanej metryki.
+
+    # Określamy, jaką metrykę AWS ma obserwować.
     predefined_metric_specification {
-      # Średnie zużycie CPU przez usługę.
+      # Wybieramy standardową metrykę: "Średnie zużycie CPU przez wszystkie
+      # kontenery w danej usłudze ECS".
       predefined_metric_type = "ECSServiceAverageCPUUtilization"
     }
-    # Cel: utrzymuj średnie zużycie CPU na poziomie 75%. Jeśli wzrośnie, dodaj instancje. Jeśli spadnie, usuń.
+
+    # To jest nasz cel: "Staraj się utrzymywać średnie użycie CPU na poziomie 75%".
+    # Jeśli użycie CPU wzrośnie powyżej 75%, AWS automatycznie doda nowy kontener (scale-out).
+    # Jeśli spadnie znacznie poniżej 75%, AWS usunie jeden z kontenerów (scale-in).
     target_value       = 75.0
-    # Czas "uspokojenia" po skalowaniu w dół (w sekundach).
+
+    # Po usunięciu kontenera (scale-in), poczekaj 300 sekund (5 minut) zanim
+    # podejmiesz kolejną decyzję o usunięciu. Zapobiega to zbyt gwałtownemu
+    # usuwaniu kontenerów, jeśli obciążenie jest niestabilne.
     scale_in_cooldown  = 300
-    # Czas "uspokojenia" po skalowaniu w górę (w sekundach).
+
+    # Po dodaniu nowego kontenera (scale-out), poczekaj 60 sekund zanim podejmiesz
+    # kolejną decyzję o dodaniu. Daje to nowemu kontenerowi czas na uruchomienie się
+    # i przejęcie części ruchu, co ustabilizuje metrykę CPU.
     scale_out_cooldown = 60
   }
 }
@@ -998,120 +1114,236 @@ resource "aws_lambda_function" "auto_confirm_user" {
   source_code_hash = filebase64sha256(length(fileset(path.module, "lambda/auto_confirm_user.zip")) > 0 ? "${path.module}/lambda/auto_confirm_user.zip" : "dummy")
   tags             = local.common_tags
 }
+
 # Uprawnienie dla Cognito do wywoływania naszej funkcji Lambda.
 resource "aws_lambda_permission" "allow_cognito" {
   statement_id  = "AllowCognitoToCallLambda"
   # Akcja, na którą zezwalamy.
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.auto_confirm_user.function_name
-  # Kto może wywoływać (principal) - usługa Cognito.
+  # Kto może wywoływać - usługa Cognito.
   principal     = "cognito-idp.amazonaws.com"
   # Z jakiego źródła (ARN naszej puli użytkowników).
   source_arn    = aws_cognito_user_pool.chat_pool.arn
 }
 
+
 # --- Definicje funkcji Lambda dla logiki czatu ---
 # Tworzymy funkcje Lambda, które będą obsługiwać logikę biznesową czatu.
 # WAŻNE: Początkowo wdrażamy je z "zaślepką" (dummy zip), a prawdziwy kod .jar jest wgrywany przez skrypt deploy.sh.
 
-# Lambda do wysyłania wiadomości.
+# Definiujemy funkcję Lambda odpowiedzialną za logikę wysyłania wiadomości.
 resource "aws_lambda_function" "send_message_lambda" {
+  # Unikalna nazwa funkcji w AWS, generowana na podstawie nazwy projektu.
   function_name = "${local.project_name}-SendMessageLambda"
-  # Handler w kodzie Javy (ścieżka do klasy i metody).
-  handler       = "pl.projektchmury.chatapp.lambda.SendMessageLambda::handleRequest"
-  role          = var.lab_role_arn
-  runtime       = "java17"
-  memory_size   = 512
-  timeout       = 30
-  # Początkowo używamy "zaślepki".
-  filename         = data.archive_file.dummy_lambda_zip.output_path
-  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
-  # Używamy wspólnych zmiennych środowiskowych.
-  environment { variables = local.chat_lambda_common_environment_variables }
-  # Konfiguracja VPC, aby Lambda mogła połączyć się z bazą danych RDS.
-  vpc_config {
-    subnet_ids         = data.aws_subnets.default.ids
-    security_group_ids = [aws_security_group.internal_sg.id]
-  }
-  tags = local.common_tags
-  # Mówimy Terraformowi, aby ignorował zmiany w pliku i jego hashu, ponieważ będą one zarządzane przez skrypt deploy.sh.
-  lifecycle {
-    ignore_changes = [
-      filename,
-      source_code_hash,
-    ]
-  }
-}
-# Lambda do pobierania wysłanych wiadomości.
-resource "aws_lambda_function" "get_sent_messages_lambda" {
-  function_name = "${local.project_name}-GetSentMessagesLambda"
-  handler       = "pl.projektchmury.chatapp.lambda.GetSentMessagesLambda::handleRequest"
-  role          = var.lab_role_arn
-  runtime       = "java17"
-  memory_size   = 256
-  timeout       = 20
-  filename         = data.archive_file.dummy_lambda_zip.output_path
-  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
-  environment { variables = local.chat_lambda_common_environment_variables }
-  vpc_config {
-    subnet_ids         = data.aws_subnets.default.ids
-    security_group_ids = [aws_security_group.internal_sg.id]
-  }
-  tags = local.common_tags
-  lifecycle {
-    ignore_changes = [
-      filename,
-      source_code_hash,
-    ]
-  }
-}
-# Lambda do pobierania otrzymanych wiadomości.
-resource "aws_lambda_function" "get_received_messages_lambda" {
-  function_name = "${local.project_name}-GetReceivedMessagesLambda"
-  handler       = "pl.projektchmury.chatapp.lambda.GetReceivedMessagesLambda::handleRequest"
-  role          = var.lab_role_arn
-  runtime       = "java17"
-  memory_size   = 256
-  timeout       = 20
-  filename         = data.archive_file.dummy_lambda_zip.output_path
-  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
-  environment { variables = local.chat_lambda_common_environment_variables }
-  vpc_config {
-    subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.internal_sg.id]
-  }
-  tags = local.common_tags
-  lifecycle {
-    ignore_changes = [
-      filename,
-      source_code_hash,
-    ]
-  }
-}
-# Lambda do oznaczania wiadomości jako przeczytane.
-resource "aws_lambda_function" "mark_message_as_read_lambda" {
-  function_name = "${local.project_name}-MarkMessageAsReadLambda"
-  handler       = "pl.projektchmury.chatapp.lambda.MarkMessageAsReadLambda::handleRequest"
-  role          = var.lab_role_arn
-  runtime       = "java17"
-  memory_size   = 256
-  timeout       = 20
-  filename         = data.archive_file.dummy_lambda_zip.output_path
-  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
-  environment { variables = local.chat_lambda_common_environment_variables }
-  vpc_config {
-    subnet_ids         = data.aws_subnets.default.ids # <<< POPRAWKA
-    security_group_ids = [aws_security_group.internal_sg.id]
-  }
-  tags = local.common_tags
-  lifecycle {
-    ignore_changes = [
-      filename,
-      source_code_hash,
 
+  # "Punkt wejścia" do naszego kodu. AWS wie, że ma uruchomić metodę 'handleRequest'
+  # w klasie 'pl.projektchmury.chatapp.lambda.SendMessageLambda' w naszym pliku JAR.
+  handler       = "pl.projektchmury.chatapp.lambda.SendMessageLambda::handleRequest"
+
+  # Rola IAM, która nadaje tej funkcji uprawnienia, np. do zapisu logów w CloudWatch
+  # i połączenia z bazą danych RDS.
+  role          = var.lab_role_arn
+
+  # Środowisko wykonawcze dla naszego kodu. Wybieramy Javę w wersji 17.
+  runtime       = "java17"
+
+  # Ilość pamięci RAM przydzielona dla funkcji (w MB). Więcej pamięci to też więcej mocy CPU.
+  memory_size   = 512
+
+  # Maksymalny czas (w sekundach), przez jaki funkcja może działać. Jeśli przekroczy 30s,
+  # zostanie przymusowo zatrzymana. Zapobiega to "wiecznym pętlom" i niekontrolowanym kosztom.
+  timeout       = 30
+
+  # Na etapie tworzenia infrastruktury przez Terraform, wgrywamy mały, pusty plik "dummy".
+  # Prawdziwy kod JAR zostanie wgrany później przez skrypt deploy.sh.
+  filename         = data.archive_file.dummy_lambda_zip.output_path
+  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
+
+  # Przekazujemy do funkcji zmienne środowiskowe, takie jak adres bazy danych i hasła
+  environment { variables = local.chat_lambda_common_environment_variables }
+
+  # Umieszczamy tę funkcję w naszej sieci VPC. Jest to KONIECZNE, aby mogła
+  # połączyć się z naszą bazą danych RDS, która nie jest publicznie dostępna.
+  vpc_config {
+    # Wskazujemy podsieci, w których funkcja może działać.
+    subnet_ids         = data.aws_subnets.default.ids
+    # Przypisujemy grupę bezpieczeństwa, która zezwala na ruch do bazy danych.
+    security_group_ids = [aws_security_group.internal_sg.id]
+  }
+
+  tags = local.common_tags
+
+  # To jest kluczowy blok: mówimy Terraformowi, żeby po stworzeniu funkcji
+  # IGNOROWAŁ przyszłe zmiany w pliku z kodem i jego hashu. Robimy to, ponieważ
+  # kod będzie aktualizowany przez skrypt deploy.sh, a nie przez Terraform.
+  # Bez tego, Terraform przy każdym uruchomieniu próbowałby przywrócić "dummy" kod.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
     ]
   }
 }
+
+# Definiujemy funkcję Lambda odpowiedzialną za pobieranie wiadomości WYSŁANYCH przez użytkownika.
+resource "aws_lambda_function" "get_sent_messages_lambda" {
+  # Unikalna nazwa funkcji w AWS, generowana na podstawie nazwy projektu.
+  function_name = "${local.project_name}-GetSentMessagesLambda"
+
+  # "Punkt wejścia" do naszego kodu. AWS wie, że ma uruchomić metodę 'handleRequest'
+  # w klasie 'pl.projektchmury.chatapp.lambda.GetSentMessagesLambda' w naszym pliku JAR.
+  handler       = "pl.projektchmury.chatapp.lambda.GetSentMessagesLambda::handleRequest"
+
+  # Rola IAM, która nadaje tej funkcji uprawnienia, np. do zapisu logów w CloudWatch
+  # i połączenia z bazą danych RDS.
+  role          = var.lab_role_arn
+
+  # Środowisko wykonawcze dla naszego kodu. Wybieramy Javę w wersji 17.
+  runtime       = "java17"
+
+  # Ilość pamięci RAM przydzielona dla funkcji (w MB). Mniej niż dla 'send_message',
+  # bo odczyt z bazy jest zazwyczaj mniej zasobożerny niż zapis i wysyłka do SQS.
+  memory_size   = 256
+
+  # Maksymalny czas (w sekundach), przez jaki funkcja może działać, zanim zostanie zatrzymana.
+  timeout       = 20
+
+  # Na etapie tworzenia infrastruktury przez Terraform, wgrywamy mały, pusty plik "dummy".
+  # Prawdziwy kod JAR zostanie wgrany później przez skrypt deploy.sh.
+  filename         = data.archive_file.dummy_lambda_zip.output_path
+  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
+
+  # Przekazujemy do funkcji zmienne środowiskowe, takie jak adres bazy danych i hasła,
+  # aby nie musieć ich "hardkodować" w kodzie.
+  environment { variables = local.chat_lambda_common_environment_variables }
+
+  # Umieszczamy tę funkcję w naszej sieci VPC. Jest to KONIECZNE, aby mogła
+  # połączyć się z naszą bazą danych RDS, która nie jest publicznie dostępna.
+  vpc_config {
+    # Wskazujemy podsieci, w których funkcja może działać.
+    subnet_ids         = data.aws_subnets.default.ids
+    # Przypisujemy grupę bezpieczeństwa, która zezwala na ruch do bazy danych.
+    security_group_ids = [aws_security_group.internal_sg.id]
+  }
+
+  tags = local.common_tags
+
+  # To jest kluczowy blok: mówimy Terraformowi, żeby po stworzeniu funkcji
+  # IGNOROWAŁ przyszłe zmiany w pliku z kodem i jego hashu. Robimy to, ponieważ
+  # kod będzie aktualizowany przez skrypt deploy.sh, a nie przez Terraform.
+  # Bez tego, Terraform przy każdym uruchomieniu próbowałby przywrócić "dummy" kod.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
+}
+# Definiujemy funkcję Lambda odpowiedzialną za pobieranie wiadomości OTRZYMANYCH przez użytkownika.
+resource "aws_lambda_function" "get_received_messages_lambda" {
+  # Unikalna nazwa funkcji w AWS, generowana na podstawie nazwy projektu.
+  function_name = "${local.project_name}-GetReceivedMessagesLambda"
+
+  # "Punkt wejścia" do naszego kodu. AWS wie, że ma uruchomić metodę 'handleRequest'
+  # w klasie 'pl.projektchmury.chatapp.lambda.GetReceivedMessagesLambda' w naszym pliku JAR.
+  handler       = "pl.projektchmury.chatapp.lambda.GetReceivedMessagesLambda::handleRequest"
+
+  # Rola IAM, która nadaje tej funkcji uprawnienia, np. do zapisu logów w CloudWatch
+  # i połączenia z bazą danych RDS.
+  role          = var.lab_role_arn
+
+  # Środowisko wykonawcze dla naszego kodu. Wybieramy Javę w wersji 17.
+  runtime       = "java17"
+
+  # Ilość pamięci RAM przydzielona dla funkcji (w MB).
+  memory_size   = 256
+
+  # Maksymalny czas (w sekundach), przez jaki funkcja może działać, zanim zostanie zatrzymana.
+  timeout       = 20
+
+  # Na etapie tworzenia infrastruktury przez Terraform, wgrywamy mały, pusty plik "dummy".
+  # Prawdziwy kod JAR zostanie wgrany później przez skrypt deploy.sh.
+  filename         = data.archive_file.dummy_lambda_zip.output_path
+  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
+
+  # Przekazujemy do funkcji zmienne środowiskowe, takie jak adres bazy danych i hasła.
+  environment { variables = local.chat_lambda_common_environment_variables }
+
+  # Umieszczamy tę funkcję w naszej sieci VPC. Jest to KONIECZNE, aby mogła
+  # połączyć się z naszą bazą danych RDS, która nie jest publicznie dostępna.
+  vpc_config {
+    # Wskazujemy podsieci, w których funkcja może działać.
+    subnet_ids         = data.aws_subnets.default.ids
+    # Przypisujemy grupę bezpieczeństwa, która zezwala na ruch do bazy danych.
+    security_group_ids = [aws_security_group.internal_sg.id]
+  }
+
+  tags = local.common_tags
+
+  # To jest kluczowy blok: mówimy Terraformowi, żeby po stworzeniu funkcji
+  # IGNOROWAŁ przyszłe zmiany w pliku z kodem i jego hashu. Robimy to, ponieważ
+  # kod będzie aktualizowany przez skrypt deploy.sh, a nie przez Terraform.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
+}
+
+# Definiujemy funkcję Lambda odpowiedzialną za oznaczanie wiadomości jako przeczytanej.
+resource "aws_lambda_function" "mark_message_as_read_lambda" {
+  # Unikalna nazwa funkcji w AWS, generowana na podstawie nazwy projektu.
+  function_name = "${local.project_name}-MarkMessageAsReadLambda"
+
+  # "Punkt wejścia" do naszego kodu. AWS wie, że ma uruchomić metodę 'handleRequest'
+  # w klasie 'pl.projektchmury.chatapp.lambda.MarkMessageAsReadLambda' w naszym pliku JAR.
+  handler       = "pl.projektchmury.chatapp.lambda.MarkMessageAsReadLambda::handleRequest"
+
+  # Rola IAM, która nadaje tej funkcji uprawnienia, np. do zapisu logów w CloudWatch
+  # i połączenia z bazą danych RDS.
+  role          = var.lab_role_arn
+
+  # Środowisko wykonawcze dla naszego kodu. Wybieramy Javę w wersji 17.
+  runtime       = "java17"
+
+  # Ilość pamięci RAM przydzielona dla funkcji (w MB).
+  memory_size   = 256
+
+  # Maksymalny czas (w sekundach), przez jaki funkcja może działać, zanim zostanie zatrzymana.
+  timeout       = 20
+
+  # Na etapie tworzenia infrastruktury przez Terraform, wgrywamy mały, pusty plik "dummy".
+  # Prawdziwy kod JAR zostanie wgrany później przez skrypt deploy.sh.
+  filename         = data.archive_file.dummy_lambda_zip.output_path
+  source_code_hash = data.archive_file.dummy_lambda_zip.output_base64sha256
+
+  # Przekazujemy do funkcji zmienne środowiskowe, takie jak adres bazy danych i hasła.
+  environment { variables = local.chat_lambda_common_environment_variables }
+
+  # Umieszczamy tę funkcję w naszej sieci VPC. Jest to KONIECZNE, aby mogła
+  # połączyć się z naszą bazą danych RDS, która nie jest publicznie dostępna.
+  vpc_config {
+    # Wskazujemy podsieci, w których funkcja może działać.
+    subnet_ids         = data.aws_subnets.default.ids
+    # Przypisujemy grupę bezpieczeństwa, która zezwala na ruch do bazy danych.
+    security_group_ids = [aws_security_group.internal_sg.id]
+  }
+
+  tags = local.common_tags
+
+  # To jest kluczowy blok: mówimy Terraformowi, żeby po stworzeniu funkcji
+  # IGNOROWAŁ przyszłe zmiany w pliku z kodem i jego hashu. Robimy to, ponieważ
+  # kod będzie aktualizowany przez skrypt deploy.sh, a nie przez Terraform.
+  lifecycle {
+    ignore_changes = [
+      filename,
+      source_code_hash,
+    ]
+  }
+}
+
 
 # --- API Gateway dla funkcji Lambda czatu ---
 # API Gateway to usługa, która tworzy API RESTful przed naszymi funkcjami Lambda, wystawiając je na świat.
@@ -1138,7 +1370,8 @@ resource "aws_api_gateway_authorizer" "cognito_authorizer_for_chat_api" {
   # Jak długo wynik autoryzacji ma być przechowywany w pamięci podręcznej (w sekundach).
   authorizer_result_ttl_in_seconds  = 300
 }
-# Tworzymy zasób (resource), czyli ścieżkę w naszym API, np. /messages.
+
+# Tworzymy zasób (resource) - ścieżkę w naszym API, np. /messages.
 resource "aws_api_gateway_resource" "messages_resource" {
   rest_api_id = aws_api_gateway_rest_api.chat_api.id
   # "Rodzicem" jest główny zasób API (root).
@@ -1157,24 +1390,23 @@ resource "aws_api_gateway_method" "send_message_post_method" {
 }
 
 # Tworzymy integrację między metodą API a funkcją Lambda.
-# To jest "klej", który mówi API Gateway, żeby po otrzymaniu zapytania POST na /messages wywołał naszą Lambdę.
+# Czyli mówimy API Gateway, żeby po otrzymaniu zapytania POST na /messages wywołał naszą Lambdę.
 resource "aws_api_gateway_integration" "send_message_lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.chat_api.id
   resource_id             = aws_api_gateway_resource.messages_resource.id
   http_method             = aws_api_gateway_method.send_message_post_method.http_method
-  # Metoda HTTP używana do wywołania backendu (Lambdy).
-  integration_http_method = "POST"
-  # Typ integracji 'AWS_PROXY' przekazuje całe zapytanie do Lambdy i zwraca jej odpowiedź. To najprostszy i najczęstszy sposób.
-  type                    = "AWS_PROXY"
-  # ARN funkcji Lambda, którą chcemy wywołać.
-  uri                     = aws_lambda_function.send_message_lambda.invoke_arn
+
+  integration_http_method = "POST" # Metoda HTTP używana do wywołania backendu (Lambdy).
+  type                    = "AWS_PROXY" # Typ integracji 'AWS_PROXY' przekazuje całe zapytanie do Lambdy i zwraca jej odpowiedź. To najprostszy i najczęstszy sposób.
+  uri                     = aws_lambda_function.send_message_lambda.invoke_arn # ARN funkcji Lambda, którą chcemy wywołać.
 }
 # Uprawnienie dla API Gateway do wywoływania tej konkretnej funkcji Lambda.
 resource "aws_lambda_permission" "apigw_lambda_send_message" {
-  statement_id  = "AllowAPIGatewayInvokeSendMessageLambda"
+  statement_id  = "AllowAPIGatewayInvokeSendMessageLambda" # Unikalny identyfikator uprawnienia.
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.send_message_lambda.function_name
-  principal     = "apigateway.amazonaws.com"
+  principal     = "apigateway.amazonaws.com" # To oznacza, że API Gateway może wywołać tę Lambdę.
+
   # 'source_arn' precyzyjnie określa, która metoda w API może wywołać Lambdę.
   source_arn    = "${aws_api_gateway_rest_api.chat_api.execution_arn}/*/${aws_api_gateway_method.send_message_post_method.http_method}${aws_api_gateway_resource.messages_resource.path}"
 }
@@ -1289,44 +1521,75 @@ resource "aws_lambda_permission" "apigw_lambda_mark_as_read" {
 
 
 # --- Metody OPTIONS dla CORS ---
-# CORS (Cross-Origin Resource Sharing) to mechanizm, który pozwala przeglądarkom na wysyłanie zapytań do API hostowanego na innej domenie.
-# Przeglądarka najpierw wysyła zapytanie "sprawdzające" metodą OPTIONS. Musimy na nie poprawnie odpowiedzieć.
+# Ten cały blok jest potrzebny, aby przeglądarka internetowa (w której działa nasz frontend)
+# mogła bezpiecznie komunikować się z naszym API, które jest na innej domenie.
+# Przeglądarka, ze względów bezpieczeństwa, najpierw wysyła zapytanie "sprawdzające" (preflight)
+# metodą OPTIONS, aby zapytać serwer API, czy zgadza się na komunikację.
+# Poniższy kod buduje odpowiedź "Tak, zgadzam się" na to zapytanie.
 
-# Metoda OPTIONS dla zasobu /messages
+# Krok 1: Tworzymy w API Gateway endpoint, który nasłuchuje na metodę OPTIONS.
 resource "aws_api_gateway_method" "messages_options_method" {
-  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
-  resource_id   = aws_api_gateway_resource.messages_resource.id
-  http_method   = "OPTIONS"
-  # Nie wymaga autoryzacji.
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id # ID naszego API Gateway.
+  resource_id   = aws_api_gateway_resource.messages_resource.id # ID zasobu, czyli ścieżki /messages.
+  http_method   = "OPTIONS" # Metoda HTTP, którą chcemy obsłużyć.
+  # To zapytanie nie wymaga autoryzacji, bo przeglądarka wysyła je "anonimowo"
+  # zanim jeszcze wyśle token użytkownika.
   authorization = "NONE"
 }
-# Integracja typu 'MOCK' dla metody OPTIONS.
-# Zamiast wywoływać Lambdę, API Gateway od razu zwraca predefiniowaną odpowiedź.
+
+# Krok 2: Definiujemy, co ma się stać, gdy przyjdzie zapytanie OPTIONS.
+# Używamy typu 'MOCK', co oznacza, że API Gateway odpowie od razu, bez wywoływania
+# żadnej funkcji Lambda. Jest to bardzo szybkie i tanie.
 resource "aws_api_gateway_integration" "messages_options_integration" {
   rest_api_id = aws_api_gateway_rest_api.chat_api.id
   resource_id = aws_api_gateway_resource.messages_resource.id
   http_method = aws_api_gateway_method.messages_options_method.http_method
   type        = "MOCK"
-  # Szablon żądania, który zwraca status 200.
+
+  # Sztucznie generujemy odpowiedź dla integracji MOCK.
+  # To jest wewnętrzny status dla API Gateway, mówiący "ta integracja zakończyła się sukcesem",
+  # co pozwala mu przejść do następnego kroku (method_response).
   request_templates = {
     "application/json" = "{\"statusCode\": 200}"
   }
 }
-# Definicja odpowiedzi dla metody OPTIONS.
+
+# Krok 3: Deklarujemy, JAK BĘDZIE wyglądać odpowiedź wysyłana do klienta.
 resource "aws_api_gateway_method_response" "messages_options_200" {
   rest_api_id   = aws_api_gateway_rest_api.chat_api.id
   resource_id   = aws_api_gateway_resource.messages_resource.id
   http_method   = aws_api_gateway_method.messages_options_method.http_method
+
+  # Definiujemy, że faktyczny kod statusu HTTP, który zobaczy przeglądarka, to "200 OK".
   status_code   = "200"
+
   response_models = {
     "application/json" = "Empty"
   }
-  # Definiujemy, które nagłówki CORS będą w odpowiedzi.
+  # "Odblokowujemy" możliwość wysyłania tych nagłówków CORS w odpowiedzi.
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = true,
     "method.response.header.Access-Control-Allow-Methods" = true,
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
+}
+# Krok 4: Ustawiamy KONKRETNE WARTOŚCI nagłówków CORS w odpowiedzi.
+resource "aws_api_gateway_integration_response" "messages_options_integration_response_200" {
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  resource_id = aws_api_gateway_resource.messages_resource.id
+  http_method = aws_api_gateway_method.messages_options_method.http_method
+  status_code = aws_api_gateway_method_response.messages_options_200.status_code
+
+  # To jest serce odpowiedzi na zapytanie CORS:
+  response_parameters = {
+    # Mówimy przeglądarce, jakie nagłówki są dozwolone w "prawdziwym" zapytaniu (np. POST).
+    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
+    # Mówimy, jakie metody HTTP są dozwolone na tym endpoincie.
+    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'",
+    # Mówimy, która domena (lub '*' dla wszystkich) może się z nami komunikować.
+    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
+  }
+  depends_on = [aws_api_gateway_integration.messages_options_integration]
 }
 # Konfiguracja odpowiedzi z integracji MOCK.
 resource "aws_api_gateway_integration_response" "messages_options_integration_response_200" {
@@ -1349,11 +1612,17 @@ resource "aws_api_gateway_integration_response" "messages_options_integration_re
   # Zapewnia, że ten zasób jest tworzony po integracji.
   depends_on = [aws_api_gateway_integration.messages_options_integration]
 }
+
 # Dla zasobu /messages/sent
 resource "aws_api_gateway_method" "messages_sent_options_method" {
   rest_api_id   = aws_api_gateway_rest_api.chat_api.id
   resource_id   = aws_api_gateway_resource.messages_sent_resource.id
   http_method   = "OPTIONS"
+
+  # Ustawiamy na "NONE", ponieważ zapytanie OPTIONS jest wysyłane przez przeglądarkę
+  # automatycznie i bez tokenu autoryzacyjnego. Wymaganie tu autoryzacji
+  # zablokowałoby całą komunikację z API. Bezpieczeństwo jest zachowane,
+  # bo faktyczne dane (np. z metody GET) nadal wymagają autoryzacji.
   authorization = "NONE"
 }
 
@@ -1482,7 +1751,6 @@ resource "aws_api_gateway_integration_response" "mark_as_read_options_integratio
   response_parameters = {
     "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'"
     "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'"
-    # "method.response.header.Access-Control-Allow-Origin"  = "'http://${aws_elastic_beanstalk_environment.frontend_env.cname}'"
     "method.response.header.Access-Control-Allow-Origin"  = "'*'"
   }
   response_templates = {
@@ -1503,8 +1771,7 @@ variable "db_initializer_jar_key" {
 # Definicja funkcji Lambda do inicjalizacji schematu bazy danych.
 # Ta funkcja jest uruchamiana raz przez skrypt deploy.sh, aby stworzyć tabele w bazie RDS.
 resource "aws_lambda_function" "db_initializer_lambda" {
-  # Upewnij się, że ta funkcja jest tworzona dopiero po utworzeniu bazy danych.
-  depends_on = [aws_db_instance.chat_db]
+  depends_on = [aws_db_instance.chat_db] # Upewniamy się, że ta funkcja jest tworzona dopiero po utworzeniu bazy danych.
 
   function_name = "${local.project_name}-DbSchemaInitializer"
   handler       = "pl.projektchmury.dbinitializer.SchemaInitializerLambda::handleRequest"
@@ -1556,7 +1823,7 @@ resource "aws_vpc_endpoint" "sqs_endpoint" {
 # Wdrożenie (Deployment) API Gateway.
 # To jest jak "opublikowanie" zmian, które zrobiliśmy w API.
 resource "aws_api_gateway_deployment" "chat_api_deployment" {
-  rest_api_id = aws_api_gateway_rest_api.chat_api.id
+  rest_api_id = aws_api_gateway_rest_api.chat_api.id # ID naszego API Gateway, które chcemy wdrożyć.
   # 'triggers' to sprytny sposób na wymuszenie nowego wdrożenia, gdy cokolwiek w API się zmieni.
   # Obliczamy hash z ID wszystkich ważnych zasobów API. Jeśli hash się zmieni, Terraform stworzy nowe wdrożenie.
   triggers = {
@@ -1577,16 +1844,16 @@ resource "aws_api_gateway_deployment" "chat_api_deployment" {
       # Metody OPTIONS
       aws_api_gateway_method.messages_options_method.id,
       aws_api_gateway_integration.messages_options_integration.id,
-      aws_api_gateway_integration_response.messages_options_integration_response_200.id, # DODANE
+      aws_api_gateway_integration_response.messages_options_integration_response_200.id,
       aws_api_gateway_method.messages_sent_options_method.id,
       aws_api_gateway_integration.messages_sent_options_integration.id,
-      aws_api_gateway_integration_response.messages_sent_options_integration_response_200.id, # DODANE
+      aws_api_gateway_integration_response.messages_sent_options_integration_response_200.id,
       aws_api_gateway_method.messages_received_options_method.id,
       aws_api_gateway_integration.messages_received_options_integration.id,
-      aws_api_gateway_integration_response.messages_received_options_integration_response_200.id, # DODANE
+      aws_api_gateway_integration_response.messages_received_options_integration_response_200.id,
       aws_api_gateway_method.mark_as_read_options_method.id,
       aws_api_gateway_integration.mark_as_read_options_integration.id,
-      aws_api_gateway_integration_response.mark_as_read_options_integration_response_200.id # DODANE
+      aws_api_gateway_integration_response.mark_as_read_options_integration_response_200.id
     ]))
   }
   lifecycle { create_before_destroy = true } # Zapewnia, że nowe wdrożenie jest tworzone, zanim stare zostanie usunięte.
@@ -1604,8 +1871,8 @@ resource "aws_api_gateway_deployment" "chat_api_deployment" {
 
 # Etap (Stage) wdrożenia. To jest jak nazwana wersja wdrożenia, np. "v1", "prod", "dev".
 resource "aws_api_gateway_stage" "chat_api_stage_v1" {
-  deployment_id = aws_api_gateway_deployment.chat_api_deployment.id
-  rest_api_id   = aws_api_gateway_rest_api.chat_api.id
+  deployment_id = aws_api_gateway_deployment.chat_api_deployment.id # ID wdrożenia, które chcemy opublikować.
+  rest_api_id   = aws_api_gateway_rest_api.chat_api.id # ID naszego API Gateway.
   stage_name    = "v1" # Nazwa etapu, która staje się częścią adresu URL.
   tags          = local.common_tags
 }
@@ -1696,11 +1963,6 @@ output "ecs_cluster_name" {
   description = "Name of the ECS cluster"
   value       = aws_ecs_cluster.main_cluster.name
 }
-
-# output "eb_environment_name" {
-#   description = "Name of the Elastic Beanstalk environment"
-#   value       = aws_elastic_beanstalk_environment.frontend_env.name
-# }
 output "ecs_service_names" {
   description = "A map of ECS service names"
   value = {
