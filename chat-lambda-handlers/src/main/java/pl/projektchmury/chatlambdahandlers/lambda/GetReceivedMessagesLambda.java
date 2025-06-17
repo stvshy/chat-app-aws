@@ -39,14 +39,6 @@ public class GetReceivedMessagesLambda implements RequestHandler<APIGatewayProxy
             }
             String username = queryStringParameters.get("username");
 
-            // Podobnie jak w GetSentMessagesLambda, można dodać walidację autoryzacji
-            // String authenticatedUser = getAuthenticatedUser(requestEvent);
-            // if (!username.equals(authenticatedUser)) {
-            //     response.setStatusCode(403);
-            //     response.setBody("{\"error\":\"Forbidden: You can only fetch your own received messages.\"}");
-            //     return response;
-            // }
-
             List<Message> receivedMessages = messageDao.findByRecipientUsername(username);
 
             response.setStatusCode(200);
@@ -64,7 +56,4 @@ public class GetReceivedMessagesLambda implements RequestHandler<APIGatewayProxy
 
         return response;
     }
-
-    // Metoda getAuthenticatedUser byłaby taka sama jak w GetSentMessagesLambda
-    // private String getAuthenticatedUser(APIGatewayProxyRequestEvent requestEvent) { ... }
 }

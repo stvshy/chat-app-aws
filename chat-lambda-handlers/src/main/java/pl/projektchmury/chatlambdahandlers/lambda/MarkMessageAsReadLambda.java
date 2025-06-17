@@ -24,7 +24,7 @@ public class MarkMessageAsReadLambda implements RequestHandler<APIGatewayProxyRe
         Map<String, String> headers = Map.of(
                 "Content-Type", "application/json",
                 "Access-Control-Allow-Origin", "*",
-                "Access-Control-Allow-Methods", "POST,OPTIONS", // Zmieniono na POST
+                "Access-Control-Allow-Methods", "POST,OPTIONS",
                 "Access-Control-Allow-Headers", "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token"
         );
         response.setHeaders(headers);
@@ -57,14 +57,13 @@ public class MarkMessageAsReadLambda implements RequestHandler<APIGatewayProxyRe
             boolean success = messageDao.markMessageAsRead(messageId, authenticatedUser);
 
             if (success) {
-                // Opcjonalnie: pobierz zaktualizowaną wiadomość i zwróć ją
                 Message updatedMessage = messageDao.findById(messageId);
                 if (updatedMessage != null) {
                     response.setStatusCode(200);
                     response.setBody(objectMapper.writeValueAsString(updatedMessage));
                 } else {
                     // To nie powinno się zdarzyć, jeśli update się powiódł
-                    response.setStatusCode(200); // Lub 204 No Content
+                    response.setStatusCode(200);
                     response.setBody("{\"message\":\"Message marked as read, but could not retrieve updated record.\"}");
                 }
             } else {
@@ -118,9 +117,6 @@ public class MarkMessageAsReadLambda implements RequestHandler<APIGatewayProxyRe
                         return (String) claims.get("cognito:username");
                     }
                 }
-                // Jeśli nie ma claimów, można spróbować principalId, ale to zwykle 'sub'
-                // String principalId = (String) requestEvent.getRequestContext().getAuthorizer().getPrincipalId();
-                // if (principalId != null) return principalId; // To będzie 'sub', niekoniecznie username
             }
         } catch (Exception e) {
             context.getLogger().log("Error extracting username from token claims: " + e.getMessage());

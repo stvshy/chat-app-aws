@@ -8,7 +8,7 @@ public class Message {
     private String content;
     private String fileId;
     private boolean read = false;
-    private java.time.LocalDateTime createdAt; // Dodajmy pole na czas utworzenia
+    private java.time.LocalDateTime createdAt;
 
     public Message() {}
 

@@ -12,7 +12,6 @@ import pl.projektchmury.chatapp.dto.SendMessageRequest;
 import pl.projektchmury.chatapp.model.Message;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.sqs.SqsClient;
-//import software.amazon.awssdk.services.sqs.model.SendMessageRequest as SqsSendMessageRequest;
 import software.amazon.awssdk.services.sqs.model.SqsException;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import java.sql.SQLException;
@@ -31,8 +30,7 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
         String awsRegion = System.getenv("AWS_REGION_ENV"); // Ustawimy to w Terraformie
         if (awsRegion == null || awsRegion.trim().isEmpty()) {
             // Fallback lub rzucenie wyjątku, jeśli zmienna nie jest ustawiona
-            // Dla celów deweloperskich można ustawić domyślny, ale w produkcji to musi być z env
-            awsRegion = "us-east-1"; // Przykładowy fallback, NIEZALECANE W PRODUKCJI bez wyraźnego powodu
+            awsRegion = "us-east-1";
             System.err.println("Warning: AWS_REGION_ENV not set, using default: " + awsRegion);
         }
         this.sqsClient = SqsClient.builder()
@@ -41,14 +39,13 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
         this.queueUrl = System.getenv("SQS_QUEUE_URL"); // Ustawimy to w Terraformie
         if (this.queueUrl == null || this.queueUrl.trim().isEmpty()) {
             System.err.println("FATAL: SQS_QUEUE_URL environment variable is not set.");
-            // W rzeczywistej aplikacji rzuciłbym tutaj wyjątek, aby zatrzymać inicjalizację Lambdy
         }
     }
 
     @Override
     public APIGatewayProxyResponseEvent handleRequest(APIGatewayProxyRequestEvent requestEvent, Context context) {
         APIGatewayProxyResponseEvent response = new APIGatewayProxyResponseEvent();
-        response.setHeaders(Map.of("Content-Type", "application/json", "Access-Control-Allow-Origin", "*")); // Prosty CORS
+        response.setHeaders(Map.of("Content-Type", "application/json", "Access-Control-Allow-Origin", "*"));
 
         try {
             String requestBody = requestEvent.getBody();
@@ -59,7 +56,7 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
             message.setContent(sendMessageDto.getContent());
             message.setRecipientUsername(sendMessageDto.getRecipient());
             message.setFileId(sendMessageDto.getFileId());
-            message.setRead(false); // Domyślnie
+            message.setRead(false);
 
             Message savedMessage = messageDao.saveMessage(message);
 
@@ -70,7 +67,6 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
 
                 if (this.queueUrl == null) {
                     System.err.println("SQS Queue URL is not configured. Cannot send notification.");
-                    // Można rozważyć zwrócenie błędu, ale wiadomość została już zapisana
                 } else {
                     sendSqsNotification(savedMessage);
                 }
@@ -91,7 +87,6 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
             context.getLogger().log("SQS error: " + e.getMessage());
             // Wiadomość została zapisana, ale powiadomienie SQS nie wyszło.
             // Można to zalogować, ale niekoniecznie zwracać błąd klientowi, bo główna operacja się udała.
-            // W bardziej zaawansowanym systemie można by spróbować ponowić wysyłkę do SQS.
             response.setStatusCode(201); // Nadal zwracamy sukces, bo wiadomość jest w bazie
             try {
                 // Zwracamy zapisaną wiadomość, mimo błędu SQS
@@ -125,7 +120,6 @@ public class SendMessageLambda implements RequestHandler<APIGatewayProxyRequestE
         if (savedMessage.getId() != null) {
             notificationPayload.put("relatedEntityId", savedMessage.getId().toString());
         }
-        // Dodajmy też informację o autorze, może się przydać w notification-service
         notificationPayload.put("senderUsername", savedMessage.getAuthorUsername());
 
 

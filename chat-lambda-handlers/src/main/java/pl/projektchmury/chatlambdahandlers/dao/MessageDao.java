@@ -12,9 +12,7 @@ import java.util.List;
 public class MessageDao {
 
     public Message saveMessage(Message message) throws SQLException {
-        // Tabela 'message' w PostgreSQL powinna mieć kolumny:
-        // id BIGSERIAL PRIMARY KEY, author_username VARCHAR(255), recipient_username VARCHAR(255),
-        // content TEXT, file_id VARCHAR(255), read BOOLEAN DEFAULT FALSE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+
         String sql = "INSERT INTO message (author_username, recipient_username, content, file_id, read, created_at) VALUES (?, ?, ?, ?, ?, ?) RETURNING id, created_at";
         try (Connection conn = DatabaseManager.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -30,7 +28,6 @@ public class MessageDao {
             ResultSet rs = pstmt.executeQuery();
             if (rs.next()) {
                 message.setId(rs.getLong("id"));
-                // created_at jest już ustawione, ale można by je pobrać z rs.getTimestamp("created_at") jeśli baza generuje
             }
             return message;
         }

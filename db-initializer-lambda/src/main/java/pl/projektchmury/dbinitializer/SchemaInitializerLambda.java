@@ -7,11 +7,9 @@ import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 
-// ZMIANA JEST TUTAJ: implements RequestHandler<Object, String>
 public class SchemaInitializerLambda implements RequestHandler<Object, String> {
 
     @Override
-    // ORAZ TUTAJ: public String handleRequest(Object input, Context context)
     public String handleRequest(Object input, Context context) {
         context.getLogger().log("Starting database schema initialization...");
 

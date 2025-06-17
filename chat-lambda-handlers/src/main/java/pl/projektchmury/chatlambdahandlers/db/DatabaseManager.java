@@ -15,7 +15,6 @@ public class DatabaseManager {
             // Załaduj sterownik JDBC PostgreSQL
             Class.forName("org.postgresql.Driver");
         } catch (ClassNotFoundException e) {
-            // Logowanie błędu powinno być bardziej zaawansowane w produkcji
             System.err.println("PostgreSQL JDBC Driver not found.");
             e.printStackTrace();
         }

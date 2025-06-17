@@ -679,7 +679,7 @@ resource "aws_db_instance" "chat_db" {
   # Unikalny identyfikator instancji.
   identifier           = "${local.project_name}-chat-db"
   # Rozmiar dysku w GB.
-  allocated_storage    = 20
+  allocated_storage    = 2
   # Silnik bazy danych.
   engine               = "postgres"
   # Wersja silnika.
@@ -877,6 +877,17 @@ resource "aws_sns_topic" "notifications_topic" {
 # --- Kolejka SQS ---
 # SQS (Simple Queue Service) to usługa kolejkowania wiadomości. Używamy jej do komunikacji między Lambdą a serwisem powiadomień.
 
+# Do kolejki SQS wysyłany jest JSON payload zawierający dane powiadomienia
+# Funkcja Lambda SendMessageLambda (ta odpowiedzialna za wysyłanie wiadomości czatu) po pomyślnym zapisaniu wiadomości w bazie danych,
+# publikuje odpowiedni komunikat do kolejki SQS (aws_sqs_queue.chat_notifications_queue).
+# Komunikat SQS zawiera wszystkie niezbędne informacje do wygenerowania powiadomienia,
+# takie jak ID odbiorcy (targetUserId), typ powiadomienia (type), treść wiadomości (message) i ID powiązanej encji (np. ID wiadomości czatu, relatedEntityId).
+# Moduł notyfikacji (notification-service), wdrożony nadal jako mikroserwis na AWS Fargate, jest skonfigurowany do nasłuchiwania na wiadomości z tej samej kolejki SQS.
+# Wykorzystuje do tego Spring Cloud AWS SQS i adnotację @SqsListener w klasie SqsNotificationListener.
+# Po odebraniu wiadomości z SQS, serwis notyfikacji przetwarza ją, zapisując rekord powiadomienia w bazie danych DynamoDB (notifications_history_table)
+# i wysyłając je do tematu SNS (notifications_topic) w celu dalszej dystrybucji do subskrybentów.
+# Ta zmiana wprowadza decoupling (rozprzężenie) między serwisami. SendMessageLambda nie musi wiedzieć nic o wewnętrznym działaniu serwisu notyfikacji; wystarczy, że wyśle zdarzenie.
+# Zwiększa to odporność systemu (jeśli serwis notyfikacji jest chwilowo niedostępny, wiadomości czekają w kolejce) oraz skalowalność.
 resource "aws_sqs_queue" "chat_notifications_queue" {
   name                        = "${local.project_name}-chat-notifications-queue"
   # Opóźnienie dostarczenia wiadomości (w sekundach).
@@ -888,6 +899,15 @@ resource "aws_sqs_queue" "chat_notifications_queue" {
   # na 60 sekund. Daje to czas na jej przetworzenie i zapobiega sytuacji,
   # w której dwa serwisy próbują przetworzyć tę samą wiadomość jednocześnie.
   visibility_timeout_seconds  = 60
+  # ZAKOŃCZENIE:
+  #    - PO SUKCESIE: Serwis pomyślnie przetworzył wiadomość i wysyła do SQS
+  #      polecenie "DeleteMessage". Wiadomość jest TRWALE usuwana z kolejki.
+  #      Nie jest nigdzie archiwizowana przez SQS. Służyła jako zadanie do
+  #      wykonania i to zadanie zostało zakończone.
+  #
+  #    - PO AWARII: Serwis uległ awarii lub nie zdążył w 60 sekund. Polecenie
+  #      "DeleteMessage" nie zostało wysłane. Po upływie timeoutu, SQS
+  #      przywraca widoczność wiadomości, aby mogła zostać podjęta ponownie.
 
   # Włącza "long polling": jeśli kolejka jest pusta, AWS nie odpowiada od razu,
   # ale czeka do 10 sekund, czy pojawi się nowa wiadomość. Zmniejsza to liczbę
@@ -1346,8 +1366,14 @@ resource "aws_lambda_function" "mark_message_as_read_lambda" {
 
 
 # --- API Gateway dla funkcji Lambda czatu ---
-# API Gateway to usługa, która tworzy API RESTful przed naszymi funkcjami Lambda, wystawiając je na świat.
-
+# Jego zadaniem jest wystawianie na świat endpointów HTTP, które bezpośrednio uruchamiają nasze funkcje Lambda.
+# •	Natywna Integracja z Serverless: To standardowy i najbardziej wydajny sposób na wywoływanie funkcji Lambda przez internet.
+# •	Bezpieczeństwo: API Gateway ma wbudowany mechanizm autoryzacji. W naszym projekcie integruje się z AWS Cognito.
+# Oznacza to, że zanim żądanie w ogóle dotrze do naszej funkcji Lambda, API Gateway sprawdza, czy użytkownik jest zalogowany i ma ważny token.
+# To zdejmuje z nas ciężar implementacji tej logiki w kodzie Lambdy.
+# •	Zarządzanie API: API Gateway ułatwia zarządzanie takimi aspektami jak CORS, ograniczanie liczby zapytań (throttling) czy transformacje żądań
+# •	Efektywność Kosztowa: Za API Gateway płacimy tylko za faktyczne wywołania API, co idealnie pasuje do modelu serverless.
+# ALB ma stały, choć niski, koszt godzinowy, co jest akceptowalne dla stale działających usług.
 # Tworzymy nowe API REST.
 resource "aws_api_gateway_rest_api" "chat_api" {
   name        = "${local.project_name}-ChatApi"
