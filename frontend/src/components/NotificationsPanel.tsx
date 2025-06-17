@@ -1,12 +1,12 @@
 // frontend/src/components/NotificationsPanel.tsx
 import React from 'react';
 import { FiCheckSquare, FiMessageSquare, FiFileText, FiBell } from 'react-icons/fi';
-import { INotificationRecord } from '../types/types.tsx'; // Upewnij się, że ścieżka jest poprawna
+import { INotificationRecord } from '../types/types.tsx';
 import './notifications.css';
 
 interface NotificationsPanelProps {
     notifications: INotificationRecord[];
-    onMarkAsRead: (notificationId: string) => void; // Ta funkcja teraz pochodzi z App.tsx przez NotificationsBell
+    onMarkAsRead: (notificationId: string) => void;
     onNotificationClick: (record: INotificationRecord) => void;
     currentUsername: string;
 }
@@ -24,13 +24,13 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({
     if (!userNotifications.length) {
         return (
             <div className="notifications-panel empty">
-                <p>No notifications.</p> {/* Zmieniono tekst */}
+                <p>No notifications.</p>
             </div>
         );
     }
 
     const getIconForType = (type: string) => {
-        if (type?.includes('MESSAGE')) { // Dodano ?. dla bezpieczeństwa
+        if (type?.includes('MESSAGE')) {
             return <FiMessageSquare className="notification-type-icon" />;
         }
         if (type?.includes('FILE')) {

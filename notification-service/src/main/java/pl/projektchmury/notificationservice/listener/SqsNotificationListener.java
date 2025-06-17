@@ -43,11 +43,9 @@ public class SqsNotificationListener {
             String subject = payloadMap.get("subject"); // Powinno być wysłane przez SendMessageLambda
             String messageBody = payloadMap.get("message"); // Powinno być wysłane przez SendMessageLambda
             String relatedEntityId = payloadMap.get("relatedEntityId");
-            // String senderUsername = payloadMap.get("senderUsername"); // Można użyć, jeśli potrzebne
 
             if (targetUserId == null || targetUserId.isEmpty() || messageBody == null || messageBody.isEmpty()) {
                 logger.warn("Missing required fields in SQS message payload: targetUserId or message. Payload: {}", messagePayload);
-                // Można rozważyć wysłanie do Dead Letter Queue (DLQ)
                 return;
             }
 
@@ -66,10 +64,8 @@ public class SqsNotificationListener {
 
         } catch (JsonProcessingException e) {
             logger.error("Error deserializing SQS message payload: {}. Error: {}", messagePayload, e.getMessage(), e);
-            // Rozważ DLQ
         } catch (Exception e) {
             logger.error("Error processing SQS message: {}. Error: {}", messagePayload, e.getMessage(), e);
-            // Rozważ DLQ
         }
     }
 }

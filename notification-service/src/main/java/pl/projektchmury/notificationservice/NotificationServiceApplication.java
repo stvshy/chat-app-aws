@@ -25,7 +25,6 @@ public class NotificationServiceApplication {
     public ObjectMapper objectMapper() {
         ObjectMapper objectMapper = new ObjectMapper();
         objectMapper.registerModule(new JavaTimeModule()); // Dla obsługi Java Time API
-        // Inne konfiguracje ObjectMappera, jeśli potrzebne
         return objectMapper;
     }
 }
