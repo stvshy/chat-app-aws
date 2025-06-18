@@ -5,8 +5,18 @@ messenger-like application. The entire infrastructure is defined as code
 (Infrastructure as Code) using Terraform, and the deployment to Amazon Web
 Services (AWS) is fully automated.
 
-![Zrzut ekranu aplikacji](chat-app-1.png "Główny widok czatu")
-![Zrzut ekranu aplikacji](chat-app-2.png "Główny widok czatu")
+<table border="0" cellspacing="0" cellpadding="0">
+  <tr>
+    <td align="center">
+      <img src="chat-app-2.png" alt="Widok czatu - przykład 1" width="550" />
+      <br />
+    </td>
+    <td align="center">
+      <img src="chat-app-1.png" alt="Widok panelu wysłanych wiadomości - przykład 2" width="550" />
+      <br />
+    </td>
+  </tr>
+</table>
 
 ## 🚀 Key Features
 
@@ -72,6 +82,23 @@ to fully leverage the capabilities of the AWS cloud.
 *   **AWS ECR:** Private Docker image repository.
 *   **Bash Script:** Automation of the entire CI/CD process.
 
+## 🚀 Getting Started
+
+To get a copy of this project up and running on your local machine, follow these steps.
+
+### Cloning the Repository
+
+First, clone the repository to your local machine using Git:
+
+```bash
+git clone https://github.com/stvshy/chat-app-aws.git
+```
+Navigate into the cloned project directory:
+
+```bash
+cd chat-app-aws
+```
+
 ## 🚀 How to Deploy to AWS
 
 The deployment process is fully automated. All it takes is a single command!
@@ -128,7 +155,8 @@ AWS_REGION="your-aws-region"     # e.g., "us-east-1"
 
 ### Execution
 
-1.  Make sure you are in the project's root directory.
+1.  Make sure you have completed the **Cloning the Repository** and
+    **Configuration** steps.
 2.  Run the `deploy.sh` script using the command below:
 
     ```bash
