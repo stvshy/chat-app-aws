@@ -8,7 +8,7 @@ set -e
 # Trzymanie ich w jednym miejscu ułatwia zarządzanie i aktualizację.
 
 # ID konta AWS.
-AWS_ACCOUNT_ID="044902896603"
+AWS_ACCOUNT_ID="863340998271"
 # Region AWS, w którym działamy. Musi być taki sam jak w Terraform.
 AWS_REGION="us-east-1"
 # Prefiks nazwy projektu, również musi być zgodny z Terraform.

@@ -1599,24 +1599,6 @@ resource "aws_api_gateway_method_response" "messages_options_200" {
     "method.response.header.Access-Control-Allow-Origin"  = true
   }
 }
-# Krok 4: Ustawiamy KONKRETNE WARTOŚCI nagłówków CORS w odpowiedzi.
-resource "aws_api_gateway_integration_response" "messages_options_integration_response_200" {
-  rest_api_id = aws_api_gateway_rest_api.chat_api.id
-  resource_id = aws_api_gateway_resource.messages_resource.id
-  http_method = aws_api_gateway_method.messages_options_method.http_method
-  status_code = aws_api_gateway_method_response.messages_options_200.status_code
-
-  # To jest serce odpowiedzi na zapytanie CORS:
-  response_parameters = {
-    # Mówimy przeglądarce, jakie nagłówki są dozwolone w "prawdziwym" zapytaniu (np. POST).
-    "method.response.header.Access-Control-Allow-Headers" = "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token'",
-    # Mówimy, jakie metody HTTP są dozwolone na tym endpoincie.
-    "method.response.header.Access-Control-Allow-Methods" = "'POST,OPTIONS'",
-    # Mówimy, która domena (lub '*' dla wszystkich) może się z nami komunikować.
-    "method.response.header.Access-Control-Allow-Origin"  = "'*'"
-  }
-  depends_on = [aws_api_gateway_integration.messages_options_integration]
-}
 # Konfiguracja odpowiedzi z integracji MOCK.
 resource "aws_api_gateway_integration_response" "messages_options_integration_response_200" {
   rest_api_id = aws_api_gateway_rest_api.chat_api.id
